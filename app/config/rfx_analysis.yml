@@ -29,3 +29,16 @@ parameters:
         - "Requests_for_adminship/Nomination_cabal"
         - "Requests_for_adminship/%/"
       date_regexp: "(?:Final|Closed|Scheduled to end).*?(\\d+:\\d+,? \\d+ \\w+ \\d{4}) \\(UTC\\)"
+    commons.wikimedia.org:
+      rfx_namespace: 4
+      single-section: 1
+      sections:
+        - "Votes"
+      pages:
+        rfa: "Project:Administrators/Requests"
+        rfb: "Project:Bureaucrats/Requests"
+      excluded_title:
+        # TODO: Figure out excluded titles.
+      excluded_regex:
+        #TODO: Figure out excluded regexp
+      date_regexp: "(?:Final|Closed|Scheduled to end).*?(\\d+:\\d+,? \\d+ \\w+ \\d{4}) \\(UTC\\)"

@@ -83,7 +83,7 @@ class RFX
      *
      * @return null
      */
-    private function setUp($sectionArray, $rawWikiText, $dateRegexp)
+    private function setUp($sectionArray, $rawWikiText, $dateRegexp, $singleSec = false)
     {
         $this->data = array();
 
@@ -151,11 +151,12 @@ class RFX
         $sectionArray = ["Support", "Oppose", "Neutral"],
         $userNamespace = "User",
         $dateRegexp = "final .*end(?:ing|ed)?(?: no earlier than)? (.*?)? \(UTC\)",
+        $singleSection = false,
         $userLookingFor = null
     ) {
         $this->userLookingFor = $userLookingFor;
 
-        $this->setUp($sectionArray, $rawWikiText, $dateRegexp);
+        $this->setUp($sectionArray, $rawWikiText, $dateRegexp, $singleSection);
     }
 
     /**

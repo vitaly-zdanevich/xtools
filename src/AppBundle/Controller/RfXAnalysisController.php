@@ -160,7 +160,8 @@ class RfXAnalysisController extends Controller
         $rfx = new RFX(
             $text,
             $this->getParameter('rfx')[$domain]['sections'],
-            'User'
+            'User',
+            $this->getParameter('rfx')[$domain]['single-section']
         );
         $support = $rfx->getSection('support');
         $oppose = $rfx->getSection('oppose');
