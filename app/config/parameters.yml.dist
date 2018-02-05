@@ -17,12 +17,6 @@ parameters:
     database_toolsdb_port: null
     database_toolsdb_name: null
 
-    wiki_url:                   http://en.wikipedia.org
-    api_path:                   /w/api.php
-    lang:                       en
-    default_project:            en.wikipedia.org
-    opted_in:                   ~
-
     # Oauth consumer credentials, from https://meta.wikimedia.org/wiki/Special:OAuthConsumerRegistration
     oauth_key:                  ~
     oauth_secret:               ~
@@ -32,6 +26,14 @@ parameters:
     mailer_user:       ~
     mailer_password:   ~
 
+    cache.adapter: filesystem
+    cache.redis_dsn: 'redis://localhost'
+
+    wiki_url:                   http://en.wikipedia.org
+    api_path:                   /w/api.php
+    default_project:            en.wikipedia.org
+    opted_in:                   ~
+
     # A secret key that's used to generate certain security-related tokens, and as the secret for the internal API.
     secret:            ThisTokenIsNotSoSecretChangeIt
 
@@ -40,9 +42,6 @@ parameters:
     app.noticeDisplay: false
     app.noticeStyle:   ""
     app.noticeText:    ""
-
-    cache.adapter: filesystem
-    cache.redis_dsn: 'redis://localhost'
 
     app.load_stylesheets_from_cdn: 0
 
@@ -60,6 +59,9 @@ parameters:
     app.max_page_revisions: 50000
     app.max_user_edits: 350000
 
+    # Ignore for any non-WMF installation. This is only meant to convert legacy parameters.
+    languageless_wikis:
+
     # Enabling or disabling of individual tools
     enable.adminscore: 1
     enable.adminstats: 1
@@ -69,7 +71,7 @@ parameters:
     enable.blame: 0
     enable.dc: 0
     enable.ec: 1
-    enable.es: 0
+    enable.es: 1
     enable.pages: 1
     enable.rfx: 0
     enable.rfxvote: 0

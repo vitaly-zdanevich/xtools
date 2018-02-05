@@ -34,3 +34,5 @@
 /mrb_prepcommit.sh
 /app/config/project_map.yml
 i18n_helper.js
+phpDocumentor.phar
+coverage.xml

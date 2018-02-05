@@ -10,19 +10,21 @@ use Sensio\Bundle\FrameworkExtraBundle\Configuration\Route;
 use Symfony\Bundle\FrameworkBundle\Controller\Controller;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
-use Xtools\Project;
-use Xtools\ProjectRepository;
-use Xtools\User;
+use Symfony\Component\HttpFoundation\JsonResponse;
+use Symfony\Component\HttpFoundation\RedirectResponse;
+use Xtools\SimpleEditCounter;
+use Xtools\SimpleEditCounterRepository;
 
 /**
  * This controller handles the Simple Edit Counter tool.
  */
-class SimpleEditCounterController extends Controller
+class SimpleEditCounterController extends XtoolsController
 {
 
     /**
      * Get the tool's shortname.
      * @return string
+     * @codeCoverageIgnore
      */
     public function getToolShortname()
     {
@@ -37,156 +39,145 @@ class SimpleEditCounterController extends Controller
      * @Route("/sc/index.php", name="SimpleEditCounterIndexPhp")
      * @Route("/sc/{project}", name="SimpleEditCounterProject")
      * @param Request $request The HTTP request.
-     * @param string $project The project database name or domain.
      * @return Response
      */
-    public function indexAction(Request $request, $project = null)
+    public function indexAction(Request $request)
     {
-        // Get the query parameters.
-        $projectName = $project ?: $request->query->get('project');
-        $username = $request->query->get('username', $request->query->get('user'));
+        $params = $this->parseQueryParams($request);
 
-        // If we've got a project and user, redirect to results.
-        if ($projectName != '' && $username != '') {
-            $routeParams = [ 'project' => $projectName, 'username' => $username ];
-            return $this->redirectToRoute('SimpleEditCounterResult', $routeParams);
+        // Redirect if project and username are given.
+        if (isset($params['project']) && isset($params['username'])) {
+            return $this->redirectToRoute('SimpleEditCounterResult', $params);
         }
 
-        // Instantiate the project if we can, or use the default.
-        $theProject = (!empty($projectName))
-            ? ProjectRepository::getProject($projectName, $this->container)
-            : ProjectRepository::getDefaultProject($this->container);
+        // Convert the given project (or default project) into a Project instance.
+        $params['project'] = $this->getProjectFromQuery($params);
 
         // Show the form.
         return $this->render('simpleEditCounter/index.html.twig', [
             'xtPageTitle' => 'tool-sc',
             'xtSubtitle' => 'tool-sc-desc',
             'xtPage' => 'sc',
-            'project' => $theProject,
+            'project' => $params['project'],
+
+            // Defaults that will get overriden if in $params.
+            'namespace' => 'all',
+            'start' => '',
+            'end' => '',
         ]);
     }
 
     /**
      * Display the
-     * @Route("/sc/{project}/{username}", name="SimpleEditCounterResult")
-     * @param string $project The project domain name.
-     * @param string $username The username.
+     * @Route(
+     *     "/sc/{project}/{username}/{namespace}/{start}/{end}",
+     *     name="SimpleEditCounterResult",
+     *     requirements={
+     *         "start" = "|\d{4}-\d{2}-\d{2}",
+     *         "end" = "|\d{4}-\d{2}-\d{2}",
+     *         "namespace" = "|all|\d+"
+     *     }
+     * )
+     * @param Request $request The HTTP request.
+     * @param int|string $namespace Namespace ID or 'all' for all namespaces.
+     * @param null|string $start
+     * @param null|string $end
      * @return Response
+     * @codeCoverageIgnore
      */
-    public function resultAction($project, $username)
+    public function resultAction(Request $request, $namespace = 'all', $start = false, $end = false)
     {
-        /** @var Project $project */
-        $project = ProjectRepository::getProject($project, $this->container);
-        $projectRepo = $project->getRepository();
-
-        if (!$project->exists()) {
-            $this->addFlash('notice', ['invalid-project', $project]);
-            return $this->redirectToRoute('SimpleEditCounter');
+        $ret = $this->validateProjectAndUser($request);
+        if ($ret instanceof RedirectResponse) {
+            return $ret;
+        } else {
+            list($project, $user) = $ret;
         }
 
-        $dbName = $project->getDatabaseName();
+        // 'false' means the dates are optional and returned as 'false' if empty.
+        list($start, $end) = $this->getUTCFromDateParams($start, $end, false);
 
-        $userTable = $projectRepo->getTableName($dbName, 'user');
-        $archiveTable = $projectRepo->getTableName($dbName, 'archive');
-        $revisionTable = $projectRepo->getTableName($dbName, 'revision');
-        $userGroupsTable = $projectRepo->getTableName($dbName, 'user_groups');
-
-        /** @var Connection $conn */
-        $conn = $this->get('doctrine')->getManager('replicas')->getConnection();
-
-        // Prepare the query and execute
-        $resultQuery = $conn->prepare("
-            SELECT 'id' AS source, user_id as value
-                FROM $userTable
-                WHERE user_name = :username
-            UNION
-            SELECT 'arch' AS source, COUNT(*) AS value
-                FROM $archiveTable
-                WHERE ar_user_text = :username
-            UNION
-            SELECT 'rev' AS source, COUNT(*) AS value
-                FROM $revisionTable
-                WHERE rev_user_text = :username
-            UNION
-            SELECT 'groups' AS source, ug_group AS value
-                FROM $userGroupsTable
-                JOIN $userTable ON user_id = ug_user
-                WHERE user_name = :username
-        ");
-
-        $user = new User($username);
-        $usernameParam = $user->getUsername();
-        $resultQuery->bindParam('username', $usernameParam);
-        $resultQuery->execute();
-
-        if ($resultQuery->errorCode() > 0) {
-            $this->addFlash('notice', [ 'no-result', $username ]);
-            return $this->redirectToRoute('SimpleEditCounterProject', [ 'project' => $project->getDomain() ]);
-        }
-
-        // Fetch the result data
-        $results = $resultQuery->fetchAll();
-
-        // Initialize the variables - just so we don't get variable undefined errors if there is a problem
-        $id = '';
-        $arch = '';
-        $rev = '';
-        $groups = '';
-
-        // Iterate over the results, putting them in the right variables
-        foreach ($results as $row) {
-            if ($row['source'] == 'id') {
-                $id = $row['value'];
-            }
-            if ($row['source'] == 'arch') {
-                $arch = $row['value'];
-            }
-            if ($row['source'] == 'rev') {
-                $rev = $row['value'];
-            }
-            if ($row['source'] == 'groups') {
-                $groups .= $row['value']. ', ';
-            }
-        }
-
-        // Unknown user - If the user is created the $results variable will have 3 entries.
-        // This is a workaround to detect non-existent IPs.
-        if (count($results) < 3 && $arch == 0 && $rev == 0) {
-            $this->addFlash('notice', [ 'no-result', $username ]);
-
-            return $this->redirectToRoute('SimpleEditCounterProject', [ 'project' => $project->getDomain() ]);
-        }
-
-        // Remove the last comma and space
-        if (strlen($groups) > 2) {
-            $groups = substr($groups, 0, -2);
-        }
-
-        // If the user isn't in any groups, show a message.
-        if (strlen($groups) == 0) {
-            $groups = '---';
-        }
-
-        $globalGroups = '';
-
-        if (boolval($this->getParameter('app.single_wiki'))) {
-            // Retrieving the global groups, using the ApiHelper class
-            $api = $this->get('app.api_helper');
-            $globalGroups = $api->globalGroups($project->getUrl(), $username);
-        }
+        $sec = new SimpleEditCounter($this->container, $project, $user, $namespace, $start, $end);
+        $secRepo = new SimpleEditCounterRepository();
+        $secRepo->setContainer($this->container);
+        $sec->setRepository($secRepo);
+        $sec->prepareData();
 
         // Assign the values and display the template
         return $this->render('simpleEditCounter/result.html.twig', [
             'xtPage' => 'sc',
-            'xtTitle' => $username,
+            'xtTitle' => $user->getUsername(),
             'user' => $user,
             'project' => $project,
-            'id' => $id,
-            'arch' => $arch,
-            'rev' => $rev + $arch,
-            'live' => $rev,
-            'groups' => $groups,
-            'globalGroups' => $globalGroups,
+            'sec' => $sec,
         ]);
+    }
+
+    /************************ API endpoints ************************/
+
+    /**
+     * API endpoint for the Simple Edit Counter.
+     * @Route(
+     *     "/api/user/simple_editcount/{project}/{username}/{namespace}/{start}/{end}",
+     *     name="SimpleEditCounterApi",
+     *     requirements={
+     *         "start" = "|\d{4}-\d{2}-\d{2}",
+     *         "end" = "|\d{4}-\d{2}-\d{2}",
+     *         "namespace" = "|all|\d+"
+     *     }
+     * )
+     * @param Request $request
+     * @param int|string $namespace Namespace ID or 'all' for all namespaces.
+     * @param null|string $start
+     * @param null|string $end
+     * @return Response
+     * @codeCoverageIgnore
+     */
+    public function simpleEditCounterApiAction(
+        Request $request,
+        $namespace = 'all',
+        $start = false,
+        $end = false
+    ) {
+        $this->recordApiUsage('user/simple_editcount');
+
+        // Here we do want to impose the max edit count restriction. Even though the
+        // query is very 'simple', it can still run too slow for an API.
+        $ret = $this->validateProjectAndUser($request, 'sc');
+        if ($ret instanceof RedirectResponse) {
+            return $ret;
+        } else {
+            list($project, $user) = $ret;
+        }
+
+        // 'false' means the dates are optional and returned as 'false' if empty.
+        list($start, $end) = $this->getUTCFromDateParams($start, $end, false);
+
+        $sec = new SimpleEditCounter($this->container, $project, $user, $namespace, $start, $end);
+        $secRepo = new SimpleEditCounterRepository();
+        $secRepo->setContainer($this->container);
+        $sec->setRepository($secRepo);
+        $sec->prepareData();
+
+        $ret = [
+            'username' => $user->getUsername(),
+        ];
+
+        if ($namespace !== 'all') {
+            $ret['namespace'] = $namespace;
+        }
+        if ($start !== false) {
+            $ret['start'] = date('Y-m-d', $start);
+        }
+        if ($end !== false) {
+            $ret['end'] = date('Y-m-d', $end);
+        }
+
+        $ret = array_merge($ret, $sec->getData());
+
+        $response = new JsonResponse();
+        $response->setEncodingOptions(JSON_NUMERIC_CHECK);
+        $response->setData($ret);
+        return $response;
     }
 }

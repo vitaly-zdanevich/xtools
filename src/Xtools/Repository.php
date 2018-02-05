@@ -13,6 +13,7 @@ use Psr\Log\NullLogger;
 use Symfony\Component\DependencyInjection\Container;
 use Symfony\Component\Stopwatch\Stopwatch;
 use GuzzleHttp\Promise\Promise;
+use DateInterval;
 
 /**
  * A repository is responsible for retrieving data from wherever it lives (databases, APIs,
@@ -77,13 +78,14 @@ abstract class Repository
     /**
      * Get the database connection for the 'meta' database.
      * @return Connection
+     * @codeCoverageIgnore
      */
     protected function getMetaConnection()
     {
         if (!$this->metaConnection instanceof Connection) {
             $this->metaConnection = $this->container
                 ->get('doctrine')
-                ->getManager("meta")
+                ->getManager('meta')
                 ->getConnection();
         }
         return $this->metaConnection;
@@ -92,6 +94,7 @@ abstract class Repository
     /**
      * Get the database connection for the 'projects' database.
      * @return Connection
+     * @codeCoverageIgnore
      */
     protected function getProjectsConnection()
     {
@@ -108,6 +111,7 @@ abstract class Repository
      * Get the database connection for the 'tools' database
      * (the one that other tools store data in).
      * @return Connection
+     * @codeCoverageIgnore
      */
     protected function getToolsConnection()
     {
@@ -140,6 +144,7 @@ abstract class Repository
     /**
      * Is XTools connecting to MMF Labs?
      * @return boolean
+     * @codeCoverageIgnore
      */
     public function isLabs()
     {
@@ -150,7 +155,7 @@ abstract class Repository
      * Make a request to the XTools API, optionally doing so asynchronously via Guzzle.
      * @param string $endpoint Relative path to endpoint with relevant query parameters.
      * @param bool $async Set to true to asynchronously query and return a promise.
-     * @return mixed|GuzzleHttp\Promise\Promise
+     * @return GuzzleHttp\Psr7\Response|GuzzleHttp\Promise\Promise
      */
     public function queryXToolsApi($endpoint, $async = false)
     {
@@ -212,5 +217,100 @@ abstract class Repository
         }
 
         return "`$databaseName`.`$tableName`";
+    }
+
+    /**
+     * Get a unique cache key for the given list of arguments. Assuming each argument of
+     * your function should be accounted for, you can pass in them all with func_get_args:
+     *   $this->getCacheKey(func_get_args(), 'unique key for function');
+     * Arugments that are a model should implement their own getCacheKey() that returns
+     * a unique identifier for an instance of that model. See User::getCacheKey() for example.
+     * @param array|mixed $args Array of arguments or a single argument.
+     * @param string $key Unique key for this function. If omitted the function name itself
+     *   is used, which is determined using `debug_backtrace`.
+     * @return string
+     */
+    public function getCacheKey($args, $key = null)
+    {
+        if ($key === null) {
+            $key = debug_backtrace()[1]['function'];
+        }
+
+        if (!is_array($args)) {
+            $args = [$args];
+        }
+
+        // Start with base key.
+        $cacheKey = $key;
+
+        // Loop through and determine what values to use based on type of object.
+        foreach ($args as $arg) {
+            // Zero is an acceptable value.
+            if ($arg === '' || $arg === null) {
+                continue;
+            }
+
+            $cacheKey .= $this->getCacheKeyFromArg($arg);
+        }
+
+        return $cacheKey;
+    }
+
+    /**
+     * Get a cache-friendly string given an argument.
+     * @param  mixed $arg
+     * @return string
+     */
+    private function getCacheKeyFromArg($arg)
+    {
+        if (method_exists($arg, 'getCacheKey')) {
+            return '.'.$arg->getCacheKey();
+        } elseif (is_array($arg)) {
+            // Assumed to be an array of objects that can be parsed into a string.
+            return '.'.join('', $arg);
+        } else {
+            // Assumed to be a string, number or boolean.
+            return '.'.md5($arg);
+        }
+    }
+
+    /**
+     * Set the cache with given options.
+     * @param string $cacheKey
+     * @param mixed  $value
+     * @param string $duration Valid DateInterval string.
+     */
+    public function setCache($cacheKey, $value, $duration = 'PT10M')
+    {
+        $cacheItem = $this->cache
+            ->getItem($cacheKey)
+            ->set($value)
+            ->expiresAfter(new DateInterval($duration));
+        $this->cache->save($cacheItem);
+    }
+
+    /**
+     * Creates WHERE conditions with date range to be put in query.
+     *
+     * @param false|int $start
+     * @param false|int $end
+     * @param string $tableAlias Alias of table FOLLOWED BY DOT.
+     * @param string $field
+     * @return string
+     */
+    public function getDateConditions($start, $end, $tableAlias = '', $field = 'rev_timestamp')
+    {
+        $datesConditions = '';
+        if (false !== $start) {
+            // Convert to YYYYMMDDHHMMSS. *who in the world thought of having time in BLOB of this format ;-;*
+            $start = date('Ymd', $start) . '000000';
+            $datesConditions .= " AND {$tableAlias}{$field} > '$start'";
+        }
+        if (false !== $end) {
+            $end = date('Ymd', $end) . '235959';
+            $datesConditions .= " AND {$tableAlias}{$field} < '$end'";
+        }
+
+        return $datesConditions;
     }
 }

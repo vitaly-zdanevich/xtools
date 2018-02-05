@@ -8,21 +8,25 @@ namespace AppBundle\Controller;
 use DateTime;
 use Sensio\Bundle\FrameworkExtraBundle\Configuration\Route;
 use Symfony\Bundle\FrameworkBundle\Controller\Controller;
-use Symfony\Component\HttpFoundation\RedirectResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\HttpFoundation\RedirectResponse;
+use Symfony\Component\HttpFoundation\JsonResponse;
 use Xtools\ProjectRepository;
 use Xtools\UserRepository;
+use Xtools\Pages;
 
 /**
  * This controller serves the Pages tool.
  */
-class PagesController extends Controller
+class PagesController extends XtoolsController
 {
+    const RESULTS_PER_PAGE = 1000;
 
     /**
      * Get the tool's shortname.
      * @return string
+     * @codeCoverageIgnore
      */
     public function getToolShortname()
     {
@@ -36,204 +40,231 @@ class PagesController extends Controller
      * @Route("/pages/", name="PagesSlash")
      * @Route("/pages/index.php", name="PagesIndexPhp")
      * @Route("/pages/{project}", name="PagesProject")
-     * @param string $project The project domain name.
+     * @param Request $request
      * @return Response
      */
-    public function indexAction($project = null)
+    public function indexAction(Request $request)
     {
-        // Grab the request object, grab the values out of it.
-        $request = Request::createFromGlobals();
+        $params = $this->parseQueryParams($request);
 
-        $projectQuery = $request->query->get('project');
-        $username = $request->query->get('username', $request->query->get('user'));
-        $namespace = $request->query->get('namespace');
-        $redirects = $request->query->get('redirects');
-
-        // if values for required parameters are present, redirect to result action
-        if ($projectQuery != "" && $username != "" && $namespace != "" && $redirects != "") {
-            return $this->redirectToRoute("PagesResult", [
-                'project'=>$projectQuery,
-                'username' => $username,
-                'namespace'=>$namespace,
-                'redirects'=>$redirects,
-            ]);
-        } elseif ($projectQuery != "" && $username != "" && $namespace != "") {
-            return $this->redirectToRoute("PagesResult", [
-                'project'=>$projectQuery,
-                'username' => $username,
-                'namespace'=>$namespace,
-            ]);
-        } elseif ($projectQuery != "" && $username != "" && $redirects != "") {
-            return $this->redirectToRoute("PagesResult", [
-                'project'=>$projectQuery,
-                'username' => $username,
-                'redirects'=>$redirects,
-            ]);
-        } elseif ($projectQuery != "" && $username != "") {
-            return $this->redirectToRoute("PagesResult", [
-                'project'=>$projectQuery,
-                'username' => $username,
-            ]);
-        } elseif ($projectQuery != "") {
-            return $this->redirectToRoute("PagesProject", [ 'project'=>$projectQuery ]);
+        // Redirect if at minimum project and username are given.
+        if (isset($params['project']) && isset($params['username'])) {
+            return $this->redirectToRoute('PagesResult', $params);
         }
 
-        // set default wiki so we can populate the namespace selector
-        if (empty($project)) {
-            $project = $this->getParameter('default_project');
-        }
-
-        $projectData = ProjectRepository::getProject($project, $this->container);
-
-        $namespaces = null;
-
-        if ($projectData->exists()) {
-            $namespaces = $projectData->getNamespaces();
-        }
+        // Convert the given project (or default project) into a Project instance.
+        $params['project'] = $this->getProjectFromQuery($params);
 
         // Otherwise fall through.
-        return $this->render('pages/index.html.twig', [
+        return $this->render('pages/index.html.twig', array_merge([
             'xtPageTitle' => 'tool-pages',
             'xtSubtitle' => 'tool-pages-desc',
             'xtPage' => 'pages',
-            'project' => $projectData,
-            'namespaces' => $namespaces,
-        ]);
+
+            // Defaults that will get overriden if in $params.
+            'namespace' => 0,
+            'redirects' => 'noredirects',
+            'deleted' => 'both'
+        ], $params));
     }
 
     /**
      * Display the results.
-     * @Route("/pages/{project}/{username}/{namespace}/{redirects}", name="PagesResult")
-     * @param string $project The project domain name.
-     * @param string $username The username.
-     * @param string $namespace The ID of the namespace.
+     * @Route("/pages/{project}/{username}/{namespace}/{redirects}/{deleted}/{offset}", name="PagesResult")
+     * @param Request $request
+     * @param string|int $namespace The ID of the namespace, or 'all' for all namespaces.
      * @param string $redirects Whether to follow redirects or not.
+     * @param string $deleted Whether to include deleted pages or not.
+     * @param int $offset Which page of results to show, when the results are so large they are paginated.
      * @return RedirectResponse|Response
+     * @codeCoverageIgnore
      */
-    public function resultAction($project, $username, $namespace = '0', $redirects = 'noredirects')
-    {
-        $user = UserRepository::getUser($username, $this->container);
-        $username = $user->getUsername(); // use normalized user name
-
-        $projectData = ProjectRepository::getProject($project, $this->container);
-        $projectRepo = $projectData->getRepository();
-
-        // If the project exists, actually populate the values
-        if (!$projectData->exists()) {
-            $this->addFlash('notice', ['invalid-project', $project]);
-            return $this->redirectToRoute('pages');
-        }
-        if (!$user->existsOnProject($projectData)) {
-            $this->addFlash('notice', ['user-not-found']);
-            return $this->redirectToRoute('pages');
-        }
-
-        // what columns to show in namespace totals table
-        $summaryColumns = ['namespace'];
-        if ($redirects == 'onlyredirects') {
-            // don't show redundant pages column if only getting data on redirects
-            $summaryColumns[] = 'redirects';
-        } elseif ($redirects == 'noredirects') {
-            // don't show redundant redirects column if only getting data on non-redirects
-            $summaryColumns[] = 'pages';
+    public function resultAction(
+        Request $request,
+        $namespace = '0',
+        $redirects = 'noredirects',
+        $deleted = 'both',
+        $offset = 0
+    ) {
+        $ret = $this->validateProjectAndUser($request, 'pages');
+        if ($ret instanceof RedirectResponse) {
+            return $ret;
         } else {
-            // order is important here
-            $summaryColumns[] = 'pages';
-            $summaryColumns[] = 'redirects';
-        }
-        $summaryColumns[] = 'deleted'; // always show deleted column
-
-        $result = $user->getRepository()->getPagesCreated($projectData, $user, $namespace, $redirects);
-
-        $hasPageAssessments = $projectRepo->isLabs() && $projectData->hasPageAssessments();
-        $pagesByNamespaceByDate = [];
-        $pageTitles = [];
-        $countsByNamespace = [];
-        $total = 0;
-        $redirectTotal = 0;
-        $deletedTotal = 0;
-
-        foreach ($result as $row) {
-            $datetime = DateTime::createFromFormat('YmdHis', $row['rev_timestamp']);
-            $datetimeKey = $datetime->format('Ymdhi');
-            $datetimeHuman = $datetime->format('Y-m-d H:i');
-
-            $pageData = array_merge($row, [
-                'raw_time' => $row['rev_timestamp'],
-                'human_time' => $datetimeHuman,
-                'page_title' => str_replace('_', ' ', $row['page_title'])
-            ]);
-
-            if ($hasPageAssessments) {
-                $pageData['badge'] = $projectData->getAssessmentBadgeURL($pageData['pa_class']);
-            }
-
-            $pagesByNamespaceByDate[$row['namespace']][$datetimeKey][] = $pageData;
-
-            $pageTitles[] = $row['page_title'];
-
-            // Totals
-            if (isset($countsByNamespace[$row['namespace']]['total'])) {
-                $countsByNamespace[$row['namespace']]['total']++;
-            } else {
-                $countsByNamespace[$row['namespace']]['total'] = 1;
-                $countsByNamespace[$row['namespace']]['redirect'] = 0;
-                $countsByNamespace[$row['namespace']]['deleted'] = 0;
-            }
-            $total++;
-
-            if ($row['page_is_redirect']) {
-                $redirectTotal++;
-                // Redirects
-                if (isset($countsByNamespace[$row['namespace']]['redirect'])) {
-                    $countsByNamespace[$row['namespace']]['redirect']++;
-                } else {
-                    $countsByNamespace[$row['namespace']]['redirect'] = 1;
-                }
-            }
-
-            if ($row['type'] === 'arc') {
-                $deletedTotal++;
-                // Deleted
-                if (isset($countsByNamespace[$row['namespace']]['deleted'])) {
-                    $countsByNamespace[$row['namespace']]['deleted']++;
-                } else {
-                    $countsByNamespace[$row['namespace']]['deleted'] = 1;
-                }
-            }
+            list($projectData, $user) = $ret;
         }
 
-        if ($total < 1) {
-            $this->addFlash('notice', [ 'no-result', $username ]);
-            return $this->redirectToRoute('PagesProject', [ 'project' => $project ]);
-        }
-
-        ksort($pagesByNamespaceByDate);
-        ksort($countsByNamespace);
-
-        foreach (array_keys($pagesByNamespaceByDate) as $key) {
-            krsort($pagesByNamespaceByDate[$key]);
-        }
-
-        // Retrieve the namespaces
-        $namespaces = $projectData->getNamespaces();
+        $pages = new Pages(
+            $projectData,
+            $user,
+            $namespace,
+            $redirects,
+            $deleted,
+            $offset
+        );
+        $pages->prepareData();
 
         // Assign the values and display the template
         return $this->render('pages/result.html.twig', [
             'xtPage' => 'pages',
-            'xtTitle' => $username,
+            'xtTitle' => $user->getUsername(),
             'project' => $projectData,
             'user' => $user,
-            'namespace' => $namespace,
-            'redirect' => $redirects,
-            'summaryColumns' => $summaryColumns,
-            'namespaces' => $namespaces,
-            'pages' => $pagesByNamespaceByDate,
-            'count' => $countsByNamespace,
-            'total' => $total,
-            'redirectTotal' => $redirectTotal,
-            'deletedTotal' => $deletedTotal,
-            'hasPageAssessments' => $hasPageAssessments,
+            'summaryColumns' => $this->getSummaryColumns($redirects, $deleted),
+            'pages' => $pages,
         ]);
+    }
+
+    /**
+     * What columns to show in namespace totals table.
+     * @param  string $redirects One of 'noredirects', 'onlyredirects' or blank for both.
+     * @param  string $deleted One of 'live', 'deleted' or 'both'.
+     * @return string[]
+     * @codeCoverageIgnore
+     */
+    protected function getSummaryColumns($redirects, $deleted)
+    {
+        $summaryColumns = ['namespace'];
+        if ($redirects == 'onlyredirects') {
+            // Don't show redundant pages column if only getting data on redirects.
+            $summaryColumns[] = 'redirects';
+        } elseif ($redirects == 'noredirects') {
+            // Don't show redundant redirects column if only getting data on non-redirects.
+            $summaryColumns[] = 'pages';
+        } else {
+            // Order is important here.
+            $summaryColumns[] = 'pages';
+            $summaryColumns[] = 'redirects';
+        }
+
+        // Show deleted column only when both deleted and live pages are visible.
+        if ($deleted == 'both') {
+            $summaryColumns[] = 'deleted';
+        }
+
+        return $summaryColumns;
+    }
+
+    /************************ API endpoints ************************/
+
+    /**
+     * Get a count of the number of pages created by a user,
+     * including the number that have been deleted and are redirects.
+     * @Route("/api/user/pages_count/{project}/{username}/{namespace}/{redirects}/{deleted}", name="PagesApiCount",
+     *     requirements={"namespace"="|\d+|all"})
+     * @param Request $request
+     * @param int|string $namespace The ID of the namespace of the page, or 'all' for all namespaces.
+     * @param string $redirects One of 'noredirects', 'onlyredirects' or 'all' for both.
+     * @param string $deleted One of 'live', 'deleted' or 'both'.
+     * @return Response
+     * @codeCoverageIgnore
+     */
+    public function countPagesApiAction(Request $request, $namespace = 0, $redirects = 'noredirects', $deleted = 'both')
+    {
+        $this->recordApiUsage('user/pages_count');
+
+        $ret = $this->validateProjectAndUser($request);
+        if ($ret instanceof RedirectResponse) {
+            return $ret;
+        } else {
+            list($project, $user) = $ret;
+        }
+
+        $pages = new Pages(
+            $project,
+            $user,
+            $namespace,
+            $redirects,
+            $deleted
+        );
+
+        $response = new JsonResponse();
+        $response->setEncodingOptions(JSON_NUMERIC_CHECK);
+        $response->setStatusCode(Response::HTTP_OK);
+
+        $counts = $pages->getCounts();
+
+        if ($namespace !== 'all' && isset($counts[$namespace])) {
+            $counts = $counts[$namespace];
+        }
+
+        $ret = [
+            'project' => $project->getDomain(),
+            'username' => $user->getUsername(),
+            'namespace' => $namespace,
+            'redirects' => $redirects,
+            'deleted' => $deleted,
+            'counts' => $counts,
+        ];
+
+        $response->setData($ret);
+
+        return $response;
+    }
+
+    /**
+     * Get the pages created by by a user.
+     * @Route("/api/user/pages/{project}/{username}/{namespace}/{redirects}/{deleted}/{offset}", name="PagesApi",
+     *     requirements={"namespace"="|\d+|all"})
+     * @param Request $request
+     * @param int|string $namespace The ID of the namespace of the page, or 'all' for all namespaces.
+     * @param string $redirects One of 'noredirects', 'onlyredirects' or 'all' for both.
+     * @param string $deleted One of 'live', 'deleted' or 'both'.
+     * @param int $offset Which page of results to show.
+     * @return Response
+     * @codeCoverageIgnore
+     */
+    public function getPagesApiAction(
+        Request $request,
+        $namespace = 0,
+        $redirects = 'noredirects',
+        $deleted = 'both',
+        $offset = 0
+    ) {
+        $this->recordApiUsage('user/pages');
+
+        // Second parameter causes it return a Redirect to the index if the user has too many edits.
+        $ret = $this->validateProjectAndUser($request, 'pages');
+        if ($ret instanceof RedirectResponse) {
+            return $ret;
+        } else {
+            list($project, $user) = $ret;
+        }
+
+        $pages = new Pages(
+            $project,
+            $user,
+            $namespace,
+            $redirects,
+            $deleted,
+            $offset
+        );
+
+        $response = new JsonResponse();
+        $response->setEncodingOptions(JSON_NUMERIC_CHECK);
+        $response->setStatusCode(Response::HTTP_OK);
+
+        $pagesList = $pages->getResults();
+
+        if ($namespace !== 'all' && isset($pagesList[$namespace])) {
+            $pagesList = $pagesList[$namespace];
+        }
+
+        $ret = [
+            'project' => $project->getDomain(),
+            'username' => $user->getUsername(),
+            'namespace' => $namespace,
+            'redirects' => $redirects,
+            'deleted' => $deleted
+        ];
+
+        if ($pages->getNumResults() === $pages->resultsPerPage()) {
+            $ret['continue'] = $offset + 1;
+        }
+
+        $ret['pages'] = $pagesList;
+
+        $response->setData($ret);
+
+        return $response;
     }
 }

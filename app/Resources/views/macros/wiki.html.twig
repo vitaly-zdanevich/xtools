@@ -6,9 +6,9 @@
     {% endspaceless %}
 {% endmacro %}
 
-{% macro pageUrlRaw(pageTitle, project) %}{% spaceless %}
+{% macro pageUrlRaw(pageTitle, project, queryParams = null) %}{% spaceless %}
     {% set articlePath = project.articlePath|replace({'$1': (pageTitle|replace({' ': '_'})|e('url'))}) %}
-    {{ (project.url|trim('/')) ~ articlePath }}
+    {{ (project.url|trim('/')) ~ articlePath ~ (queryParams is not empty ? '?' ~ queryParams : '') }}
 {% endspaceless %}{% endmacro %}
 
 {% macro pageLink(page, label = null) %}{% spaceless %}
@@ -16,10 +16,14 @@
     {{ extLink(page.url, page.title, label) }}
 {% endspaceless %}{% endmacro %}
 
-{% macro pageLinkRaw(pageTitle, project, label = null) %}{% spaceless %}
+{% macro pageLinkRaw(pageTitle, project, label = null, queryString) %}{% spaceless %}
     {% from _self import extLink as extLink %}
     {% from _self import pageUrlRaw as pageUrlRaw %}
-    {{ extLink(pageUrlRaw(pageTitle, project), pageTitle|replace({'_': ' '}), label) }}
+    {% set url = pageUrlRaw(pageTitle, project) %}
+    {% if queryString is not empty %}
+        {% set url = url ~ '?' ~ queryString %}
+    {% endif %}
+    {{ extLink(url, pageTitle|replace({'_': ' '}), label) }}
 {% endspaceless %}{% endmacro %}
 
 {% macro pageHistLink(page, label = null, offset = null, limit = null) %}{% spaceless %}
@@ -111,6 +115,12 @@
     {{ extLink(url, msg('log'), label) }}
 {% endspaceless %}{% endmacro %}
 
+{% macro logLink(project, logId, label = null) %}{% spaceless %}
+    {% from _self import extLink as extLink %}
+    {% from _self import pageUrlRaw as pageUrlRaw %}
+    {{ extLink(pageUrlRaw('Special:Redirect/logid/' ~ logId, project), logId, label) }}
+{% endspaceless %}{% endmacro %}
+
 {% macro userGroupLink(group, project, label = null) %}{% spaceless %}
     {% from _self import extLink as extLink %}
     {{ extLink(
@@ -198,25 +208,26 @@
     {{ extLink(url, label) }}
 {% endspaceless %}{% endmacro %}
 
-{% macro pageviewsLink(page, label = null, opts = null) %}{% spaceless %}
+{% macro pageviewsLink(page, label = null, params = null) %}{% spaceless %}
     {% from _self import extLink as extLink %}
     {% set url = 'https://tools.wmflabs.org/pageviews?project=' ~ page.project.domain ~ '&pages=' ~ page.title %}
-    {% if opts is not empty %}
-        {% set url = url ~ '&' ~ opts %}
+    {% if params is not empty %}
+        {% set url = url ~ '&' ~ buildQuery(params) %}
     {% endif %}
     {{ extLink(url, msg('pageviews'), label) }}
 {% endspaceless %}{% endmacro %}
 
-{% macro pageviewsLinks(page) %}{% spaceless %}
+{% macro pageviewsLinks(page, params = null) %}{% spaceless %}
     {% from _self import extLink as extLink %}
+    {% set queryString = params is not empty ? '&' ~ buildQuery(params) : '' %}
     {{ extLink(
-        'https://tools.wmflabs.org/pageviews?project=' ~ page.project.domain ~ '&pages=' ~ page.title,
+        'https://tools.wmflabs.org/pageviews?project=' ~ page.project.domain ~ '&pages=' ~ page.title ~ queryString,
         msg('pageviews')
     )}} ({{ extLink(
-        'https://tools.wmflabs.org/langviews?project=' ~ page.project.domain ~ '&page=' ~ page.title,
+        'https://tools.wmflabs.org/langviews?project=' ~ page.project.domain ~ '&page=' ~ page.title ~ queryString,
         msg('all-languages')
     )}} &middot; {{ extLink(
-        'https://tools.wmflabs.org/redirectviews?project=' ~ page.project.domain ~ '&page=' ~ page.title,
+        'https://tools.wmflabs.org/redirectviews?project=' ~ page.project.domain ~ '&page=' ~ page.title ~ queryString,
         msg('redirects')
     )}})
 {% endspaceless %}{% endmacro %}

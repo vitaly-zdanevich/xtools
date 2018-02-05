@@ -1,6 +1,5 @@
 (function () {
-    var sortDirection, sortColumn, $tocClone, tocHeight, sectionOffset = {},
-        toggleTableData, apiPath, lastProject;
+    var $tocClone, tocHeight, sectionOffset = {}, apiPath, lastProject;
 
     // Load translations with 'en.json' as a fallback
     var messagesToLoad = {};
@@ -111,6 +110,8 @@
      *                                   item, and the third is the index of the item.
      */
     window.setupToggleTable = function (dataSource, chartObj, valueKey, updateCallback) {
+        var toggleTableData;
+
         $('.toggle-table').on('click', '.toggle-table--toggle', function () {
             if (!toggleTableData) {
                 // must be cloned
@@ -198,8 +199,9 @@
      * Data type is automatically determined, with support for integer,
      *   floats, and strings, including date strings (e.g. "2016-01-01 12:59")
      */
-    function setupColumnSorting()
-    {
+    window.setupColumnSorting = function () {
+        var sortDirection, sortColumn;
+
         $('.sort-link').on('click', function () {
             sortDirection = sortColumn === $(this).data('column') ? -sortDirection : 1;
 
@@ -282,6 +284,7 @@
                 $tocClone.addClass('bold');
             });
         };
+        window.setupTocListeners = setupTocListeners;
 
         // clone the TOC and add position:fixed
         var createTocClone = function () {
@@ -295,7 +298,7 @@
         };
 
         // build object containing offsets of each section
-        var buildSectionOffsets = function () {
+        window.buildSectionOffsets = function () {
             $.each($toc.find('a'), function (index, tocMember) {
                 var id = $(tocMember).data('section');
                 sectionOffset[id] = $('#' + id).offset().top;

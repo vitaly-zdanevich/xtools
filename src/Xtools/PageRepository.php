@@ -1,18 +1,21 @@
 <?php
 /**
- * This file contains only the PagesRepository class.
+ * This file contains only the PageRepository class.
  */
 
 namespace Xtools;
 
+use DateTime;
 use DateInterval;
 use Mediawiki\Api\SimpleRequest;
 use GuzzleHttp;
 
 /**
- * A PagesRepository fetches data about Pages, either singularly or for multiple.
+ * A PageRepository fetches data about Pages, either singularly or for multiple.
+ * Despite the name, this does not have a direct correlation with the Pages tool.
+ * @codeCoverageIgnore
  */
-class PagesRepository extends Repository
+class PageRepository extends Repository
 {
 
     /**
@@ -99,22 +102,20 @@ class PagesRepository extends Repository
      * Get revisions of a single page.
      * @param Page $page The page.
      * @param User|null $user Specify to get only revisions by the given user.
-     * @return string[] Each member with keys: id, timestamp, length-
+     * @param false|int $start
+     * @param false|int $end
+     * @return string[] Each member with keys: id, timestamp, length.
      */
-    public function getRevisions(Page $page, User $user = null)
+    public function getRevisions(Page $page, User $user = null, $start = false, $end = false)
     {
-        $cacheKey = 'revisions.'.$page->getId();
-        if ($user) {
-            $cacheKey .= '.'.$user->getCacheKey();
-        }
-
+        $cacheKey = $this->getCacheKey(func_get_args(), 'page_revisions');
         if ($this->cache->hasItem($cacheKey)) {
             return $this->cache->getItem($cacheKey)->get();
         }
 
         $this->stopwatch->start($cacheKey, 'XTools');
 
-        $stmt = $this->getRevisionsStmt($page, $user);
+        $stmt = $this->getRevisionsStmt($page, $user, null, null, $start, $end);
         $result = $stmt->fetchAll();
 
         // Cache for 10 minutes, and return.
@@ -135,12 +136,20 @@ class PagesRepository extends Repository
      * @param int $numRevisions Number of revisions, if known. This is used solely to determine the
      *   OFFSET if we are given a $limit (see below). If $limit is set and $numRevisions is not set,
      *   a separate query is ran to get the nuber of revisions.
+     * @param false|int $start
+     * @param false|int $end
      * @return Doctrine\DBAL\Driver\PDOStatement
      */
-    public function getRevisionsStmt(Page $page, User $user = null, $limit = null, $numRevisions = null)
-    {
+    public function getRevisionsStmt(
+        Page $page,
+        User $user = null,
+        $limit = null,
+        $numRevisions = null,
+        $start = false,
+        $end = false
+    ) {
         $revTable = $this->getTableName($page->getProject()->getDatabaseName(), 'revision');
-        $userClause = $user ? "revs.rev_user_text in (:username) AND " : "";
+        $userClause = $user ? "revs.rev_user_text = :username AND " : "";
 
         // This sorts ascending by rev_timestamp because ArticleInfo must start with the oldest
         // revision and work its way forward for proper processing. Consequently, if we want to do
@@ -152,6 +161,8 @@ class PagesRepository extends Repository
             $limitClause = "LIMIT $offset, $limit";
         }
 
+        $datesConditions = $this->getDateConditions($start, $end, 'revs.');
+
         $sql = "SELECT
                     revs.rev_id AS id,
                     revs.rev_timestamp AS timestamp,
@@ -160,10 +171,11 @@ class PagesRepository extends Repository
                     (CAST(revs.rev_len AS SIGNED) - IFNULL(parentrevs.rev_len, 0)) AS length_change,
                     revs.rev_user AS user_id,
                     revs.rev_user_text AS username,
-                    revs.rev_comment AS comment
+                    revs.rev_comment AS comment,
+                    revs.rev_sha1 AS sha
                 FROM $revTable AS revs
                 LEFT JOIN $revTable AS parentrevs ON (revs.rev_parent_id = parentrevs.rev_id)
-                WHERE $userClause revs.rev_page = :pageid
+                WHERE $userClause revs.rev_page = :pageid $datesConditions
                 ORDER BY revs.rev_timestamp ASC
                 $limitClause";
 
@@ -180,22 +192,39 @@ class PagesRepository extends Repository
      * Get a count of the number of revisions of a single page
      * @param Page $page The page.
      * @param User|null $user Specify to only count revisions by the given user.
+     * @param false|int $start
+     * @param false|int $end
      * @return int
      */
-    public function getNumRevisions(Page $page, User $user = null)
+    public function getNumRevisions(Page $page, User $user = null, $start = false, $end = false)
     {
-        $revTable = $this->getTableName($page->getProject()->getDatabaseName(), 'revision');
-        $userClause = $user ? "rev_user_text in (:username) AND " : "";
+        $cacheKey = $this->getCacheKey(func_get_args(), 'page_numrevisions');
+        if ($this->cache->hasItem($cacheKey)) {
+            return $this->cache->getItem($cacheKey)->get();
+        }
+
+        $revTable = $page->getProject()->getTableName('revision');
+        $userClause = $user ? "rev_user_text = :username AND " : "";
+
+        $datesConditions = $this->getDateConditions($start, $end);
 
         $sql = "SELECT COUNT(*)
                 FROM $revTable
-                WHERE $userClause rev_page = :pageid";
+                WHERE $userClause rev_page = :pageid $datesConditions";
         $params = ['pageid' => $page->getId()];
         if ($user) {
             $params['username'] = $user->getUsername();
         }
+
         $conn = $this->getProjectsConnection();
-        return $conn->executeQuery($sql, $params)->fetchColumn(0);
+        $result = $conn->executeQuery($sql, $params)->fetchColumn(0);
+
+        // Cache for 10 minutes, and return.
+        $cacheItem = $this->cache->getItem($cacheKey)
+            ->set($result)
+            ->expiresAfter(new DateInterval('PT10M'));
+        $this->cache->save($cacheItem);
+        return $result;
     }
 
     /**
@@ -203,14 +232,31 @@ class PagesRepository extends Repository
      *   number of revisions, unique authors, initial author
      *   and edit count of the initial author.
      * This is combined into one query for better performance.
-     * Caching is intentionally disabled, because using the gadget,
-     *   this will get hit for a different page constantly, where
-     *   the likelihood of cache benefiting us is slim.
+     * Caching is only applied if it took considerable time to process,
+     *   because using the gadget, this will get hit for a different page
+     *   constantly, where the likelihood of cache benefiting us is slim.
      * @param Page $page The page.
      * @return string[]
      */
     public function getBasicEditingInfo(Page $page)
     {
+        $cacheKey = $this->getCacheKey(func_get_args(), 'page_basicinfo');
+        if ($this->cache->hasItem($cacheKey)) {
+            return $this->cache->getItem($cacheKey)->get();
+        }
+
+        $conn = $this->getProjectsConnection();
+
+        /**
+         * This query can sometimes take too long to run for pages with tens of thousands
+         * of revisions. This query is used by the ArticleInfo gadget, which shows basic
+         * data in real-time, so if it takes too long than the user probably didn't even
+         * wait to see the result. We'll utilize the max_statement_time variable to set
+         * a maximum query time of 60 seconds.
+         */
+        $sql = "SET max_statement_time = 60;";
+        $conn->executeQuery($sql);
+
         $revTable = $this->getTableName($page->getProject()->getDatabaseName(), 'revision');
         $userTable = $this->getTableName($page->getProject()->getDatabaseName(), 'user');
         $pageTable = $this->getTableName($page->getProject()->getDatabaseName(), 'page');
@@ -250,8 +296,22 @@ class PagesRepository extends Repository
                     ) d
                 );";
         $params = ['pageid' => $page->getId()];
-        $conn = $this->getProjectsConnection();
-        return $conn->executeQuery($sql, $params)->fetch();
+
+        // Get current time so we can compare timestamps
+        // and decide whether or to cache the result.
+        $time1 = time();
+        $result = $conn->executeQuery($sql, $params)->fetch();
+        $time2 = time();
+
+        // If it took over 5 seconds, cache the result for 20 minutes.
+        if ($time2 - $time1 > 5) {
+            $cacheItem = $this->cache->getItem($cacheKey)
+                ->set($result)
+                ->expiresAfter(new DateInterval('PT20M'));
+            $this->cache->save($cacheItem);
+        }
+
+        return $result;
     }
 
     /**
@@ -262,6 +322,11 @@ class PagesRepository extends Repository
      */
     public function getAssessments(Project $project, $pageIds)
     {
+        $cacheKey = $this->getCacheKey(func_get_args(), 'page_assessments');
+        if ($this->cache->hasItem($cacheKey)) {
+            return $this->cache->getItem($cacheKey)->get();
+        }
+
         if (!$project->hasPageAssessments()) {
             return [];
         }
@@ -275,7 +340,14 @@ class PagesRepository extends Repository
                   WHERE pa_page_id IN ($pageIds)";
 
         $conn = $this->getProjectsConnection();
-        return $conn->executeQuery($query)->fetchAll();
+        $result = $conn->executeQuery($query)->fetchAll();
+
+        // Cache for 10 minutes, and return.
+        $cacheItem = $this->cache->getItem($cacheKey)
+            ->set($result)
+            ->expiresAfter(new DateInterval('PT10M'));
+        $this->cache->save($cacheItem);
+        return $result;
     }
 
     /**
@@ -331,28 +403,11 @@ class PagesRepository extends Repository
         $wikidataId = ltrim($page->getWikidataId(), 'Q');
         $lang = $page->getProject()->getLang();
 
-        $sql = "SELECT IF(term_type = 'label', 'label', 'description') AS term, term_text
-                FROM wikidatawiki_p.wb_entity_per_page
-                JOIN wikidatawiki_p.page ON epp_page_id = page_id
-                JOIN wikidatawiki_p.wb_terms ON term_entity_id = epp_entity_id
-                    AND term_language = :lang
-                    AND term_type IN ('label', 'description')
-                WHERE epp_entity_id = :wikidataId
-
-                UNION
-
-                SELECT pl_title AS term, wb_terms.term_text
-                FROM wikidatawiki_p.pagelinks
-                JOIN wikidatawiki_p.wb_terms ON term_entity_id = SUBSTRING(pl_title, 2)
-                    AND term_entity_type = (IF(SUBSTRING(pl_title, 1, 1) = 'Q', 'item', 'property'))
-                    AND term_language = :lang
-                    AND term_type = 'label'
-                WHERE pl_namespace IN (0, 120)
-                    AND pl_from = (
-                        SELECT page_id FROM wikidatawiki_p.page
-                        WHERE page_namespace = 0
-                            AND page_title = 'Q:wikidataId'
-                    )";
+        $sql = "SELECT term_type AS term, term_text
+                FROM wikidatawiki_p.wb_terms
+                WHERE term_entity_id = :wikidataId
+                AND term_type IN ('label', 'description')
+                AND term_language = :lang";
 
         $resultQuery = $this->getProjectsConnection()->prepare($sql);
         $resultQuery->bindParam(':lang', $lang);
@@ -458,10 +513,14 @@ class PagesRepository extends Repository
         $client = new GuzzleHttp\Client();
 
         if ($start instanceof DateTime) {
-            $start = $start->format('YYYYMMDD');
+            $start = $start->format('Ymd');
+        } else {
+            $start = (new DateTime($start))->format('Ymd');
         }
         if ($end instanceof DateTime) {
-            $end = $end->format('YYYYMMDD');
+            $end = $end->format('Ymd');
+        } else {
+            $end = (new DateTime($end))->format('Ymd');
         }
 
         $project = $page->getProject()->getDomain();
@@ -471,5 +530,42 @@ class PagesRepository extends Repository
 
         $res = $client->request('GET', $url);
         return json_decode($res->getBody()->getContents(), true);
+    }
+
+    /**
+     * Get the full HTML content of the the page.
+     * @param  Page $page
+     * @param  int $revId What revision to query for.
+     * @return string
+     */
+    public function getHTMLContent(Page $page, $revId = null)
+    {
+        $client = new GuzzleHttp\Client();
+        $url = $page->getUrl();
+        if ($revId !== null) {
+            $url .= "?oldid=$revId";
+        }
+        return $client->request('GET', $url)
+            ->getBody()
+            ->getContents();
+    }
+
+    /**
+     * Get the ID of the revision of a page at the time of the given DateTime.
+     * @param  Page     $page
+     * @param  DateTime $date
+     * @return int
+     */
+    public function getRevisionIdAtDate(Page $page, DateTime $date)
+    {
+        $revisionTable = $page->getProject()->getTableName('revision');
+        $pageId = $page->getId();
+        $datestamp = $date->format('YmdHis');
+        $sql = "SELECT MAX(rev_id)
+                FROM $revisionTable
+                WHERE rev_timestamp <= $datestamp
+                AND rev_page = $pageId LIMIT 1;";
+        $resultQuery = $this->getProjectsConnection()->query($sql);
+        return (int)$resultQuery->fetchColumn();
     }
 }

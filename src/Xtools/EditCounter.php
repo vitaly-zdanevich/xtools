@@ -11,6 +11,7 @@ use DatePeriod;
 use DateInterval;
 use GuzzleHttp;
 use GuzzleHttp\Promise\Promise;
+use Xtools\Edit;
 
 /**
  * An EditCounter provides statistics about a user's edits on a project.
@@ -41,6 +42,9 @@ class EditCounter extends Model
 
     /** @var mixed[] Total numbers of edits per year */
     protected $yearCounts;
+
+    /** @var string[] Rights changes, keyed by timestamp then 'added' and 'removed'. */
+    protected $rightsChanges;
 
     /** @var int[] Keys are project DB names. */
     protected $globalEditCounts;
@@ -197,6 +201,90 @@ class EditCounter extends Model
         }
 
         return $blocks;
+    }
+
+    /**
+     * Get user rights changes of the given user.
+     * @param Project $project
+     * @param User $user
+     * @return string[] Keyed by timestamp then 'added' and 'removed'.
+     */
+    public function getRightsChanges()
+    {
+        if (isset($this->rightsChanges)) {
+            return $this->rightsChanges;
+        }
+
+        $this->rightsChanges = [];
+        $logData = $this->getRepository()
+            ->getRightsChanges($this->project, $this->user);
+
+        foreach ($logData as $row) {
+            $unserialized = @unserialize($row['log_params']);
+            if ($unserialized !== false) {
+                $old = $unserialized['4::oldgroups'];
+                $new = $unserialized['5::newgroups'];
+                $added = array_diff($new, $old);
+                $removed = array_diff($old, $new);
+
+                $this->setAutoRemovals($row, $unserialized, $added);
+            } else {
+                // This is the old school format the most likely contains
+                // the list of rights additions in as a comma-separated list.
+                list($old, $new) = explode("\n", $row['log_params']);
+                $old = array_filter(array_map('trim', explode(',', $old)));
+                $new = array_filter(array_map('trim', explode(',', $new)));
+                $added = array_diff($new, $old);
+                $removed = array_diff($old, $new);
+            }
+
+            $this->rightsChanges[$row['log_timestamp']] = [
+                'logId' => $row['log_id'],
+                'admin' => $row['log_user_text'],
+                'comment' => Edit::wikifyString($row['log_comment'], $this->project),
+                'added' => array_values($added),
+                'removed' => array_values($removed),
+                'automatic' => $row['log_action'] === 'autopromote'
+            ];
+        }
+
+        krsort($this->rightsChanges);
+
+        return $this->rightsChanges;
+    }
+
+    /**
+     * Check the given log entry for rights changes that are set to automatically expire,
+     * and add entries to $this->rightsChanges accordingly.
+     * @param array $row Log entry row from database.
+     * @param array $params Unserialized log params.
+     * @param string[] $added List of added user rights.
+     */
+    private function setAutoRemovals($row, $params, $added)
+    {
+        foreach ($added as $index => $entry) {
+            if (!isset($params['newmetadata'][$index]) ||
+                !array_key_exists('expiry', $params['newmetadata'][$index]) ||
+                empty($params['newmetadata'][$index]['expiry'])
+            ) {
+                continue;
+            }
+
+            $expiry = $params['newmetadata'][$index]['expiry'];
+
+            if (isset($this->rightsChanges[$expiry])) {
+                $this->rightsChanges[$expiry]['removed'][] = $entry;
+            } else {
+                $this->rightsChanges[$expiry] = [
+                    'logId' => $row['log_id'],
+                    'admin' => $row['log_user_text'],
+                    'comment' => null,
+                    'added' => [],
+                    'removed' => [$entry],
+                    'automatic' => true,
+                ];
+            }
+        }
     }
 
     /**
@@ -608,7 +696,10 @@ class EditCounter extends Model
         if ($this->autoEditCount) {
             return $this->autoEditCount;
         }
-        $this->autoEditCount = $this->user->countAutomatedEdits($this->project);
+        $this->autoEditCount = $this->getRepository()->countAutomatedEdits(
+            $this->project,
+            $this->user
+        );
         return $this->autoEditCount;
     }
 
@@ -783,8 +874,47 @@ class EditCounter extends Model
         /** @var DateTime Keep track of the date of their first edit. */
         $firstEdit = new DateTime();
 
-        // Loop through the database results and fill in the values
-        //   for the months that we have data for.
+        list($out, $firstEdit) = $this->fillInMonthCounts($out, $totals, $firstEdit);
+
+        $dateRange = new DatePeriod(
+            $firstEdit,
+            new DateInterval('P1M'),
+            $currentTime->modify('first day of this month')
+        );
+
+        $out = $this->fillInMonthTotalsAndLabels($out, $dateRange);
+
+        // One more set of loops to sort by year/month
+        foreach (array_keys($out['totals']) as $nsId) {
+            ksort($out['totals'][$nsId]);
+
+            foreach ($out['totals'][$nsId] as &$yearData) {
+                ksort($yearData);
+            }
+        }
+
+        // Finally, sort the namespaces
+        ksort($out['totals']);
+
+        $this->monthCounts = $out;
+        return $out;
+    }
+
+    /**
+     * Loop through the database results and fill in the values
+     * for the months that we have data for.
+     * @param array $out
+     * @param string[] $totals
+     * @param DateTime $firstEdit
+     * @return array [
+     *           string[] - Modified $out filled with month stats,
+     *           DateTime - timestamp of first edit
+     *         ]
+     * Tests covered in self::monthCounts().
+     * @codeCoverageIgnore
+     */
+    private function fillInMonthCounts($out, $totals, $firstEdit)
+    {
         foreach ($totals as $total) {
             // Keep track of first edit
             $date = new DateTime($total['year'].'-'.$total['month'].'-01');
@@ -806,12 +936,19 @@ class EditCounter extends Model
             $out['totals'][$ns][$total['year']][$total['month']] = (int) $total['count'];
         }
 
-        $dateRange = new DatePeriod(
-            $firstEdit,
-            new DateInterval('P1M'),
-            $currentTime->modify('first day of this month')
-        );
+        return [$out, $firstEdit];
+    }
 
+    /**
+     * Given the output array, fill each month's totals and labels.
+     * @param array $out
+     * @param DatePeriod $dateRange From first edit to present.
+     * @return string[] - Modified $out filled with month stats.
+     * Tests covered in self::monthCounts().
+     * @codeCoverageIgnore
+     */
+    private function fillInMonthTotalsAndLabels($out, DatePeriod $dateRange)
+    {
         foreach ($dateRange as $monthObj) {
             $year = (int) $monthObj->format('Y');
             $month = (int) $monthObj->format('n');
@@ -833,25 +970,36 @@ class EditCounter extends Model
             }
         }
 
-        // One more set of loops to sort by year/month
-        foreach (array_keys($out['totals']) as $nsId) {
-            ksort($out['totals'][$nsId]);
-
-            foreach ($out['totals'][$nsId] as &$yearData) {
-                ksort($yearData);
-            }
-        }
-
-        // Finally, sort the namespaces
-        ksort($out['totals']);
-
-        $this->monthCounts = $out;
         return $out;
     }
 
     /**
+     * Get total edits for each month. Used in wikitext export.
+     * @param  null|DateTime $currentTime *USED ONLY FOR UNIT TESTING*
+     * @return array With the months as the keys, counts as the values.
+     */
+    public function monthTotals($currentTime = null)
+    {
+        $months = [];
+
+        foreach ($this->monthCounts($currentTime)['totals'] as $nsId => $nsData) {
+            foreach ($nsData as $year => $monthData) {
+                foreach ($monthData as $month => $count) {
+                    $monthLabel = $year.'-'.sprintf('%02d', $month);
+                    if (!isset($months[$monthLabel])) {
+                        $months[$monthLabel] = 0;
+                    }
+                    $months[$monthLabel] += $count;
+                }
+            }
+        }
+
+        return $months;
+    }
+
+    /**
      * Get the total numbers of edits per year.
-     * @param null|DateTime [$currentTime] - *USED ONLY FOR UNIT TESTING*
+     * @param null|DateTime $currentTime - *USED ONLY FOR UNIT TESTING*
      *   so we can mock the current DateTime.
      * @return mixed[] With keys 'yearLabels' and 'totals', the latter
      *   keyed by namespace then year.
@@ -872,6 +1020,27 @@ class EditCounter extends Model
 
         $this->yearCounts = $out;
         return $out;
+    }
+
+    /**
+     * Get total edits for each year. Used in wikitext export.
+     * @param  null|DateTime $currentTime *USED ONLY FOR UNIT TESTING*
+     * @return array With the years as the keys, counts as the values.
+     */
+    public function yearTotals($currentTime = null)
+    {
+        $years = [];
+
+        foreach ($this->yearCounts($currentTime)['totals'] as $nsId => $nsData) {
+            foreach ($nsData as $year => $count) {
+                if (!isset($years[$year])) {
+                    $years[$year] = 0;
+                }
+                $years[$year] += $count;
+            }
+        }
+
+        return $years;
     }
 
     /**

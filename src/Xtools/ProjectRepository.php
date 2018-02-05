@@ -11,6 +11,7 @@ use Psr\Container\ContainerInterface;
 
 /**
  * This class provides data to the Project class.
+ * @codeCoverageIgnore
  */
 class ProjectRepository extends Repository
 {
@@ -206,7 +207,12 @@ class ProjectRepository extends Repository
         }
 
         // Redis cache
-        $cacheKey = "projectMetadata." . preg_replace("/[^A-Za-z0-9]/", '', $projectUrl);
+        $cacheKey = $this->getCacheKey(
+            // Removed non-alphanumeric characters
+            preg_replace("/[^A-Za-z0-9]/", '', $projectUrl),
+            'project_metadata'
+        );
+
         if ($this->cache->hasItem($cacheKey)) {
             $this->metadata = $this->cache->getItem($cacheKey)->get();
             return $this->metadata;
@@ -314,7 +320,7 @@ class ProjectRepository extends Repository
      */
     public function getPage(Project $project, $pageName)
     {
-        $pageRepo = new PagesRepository();
+        $pageRepo = new PageRepository();
         $pageRepo->setContainer($this->container);
         $page = new Page($project, $pageName);
         $page->setRepository($pageRepo);
@@ -338,10 +344,47 @@ class ProjectRepository extends Repository
              . " LIMIT 1";
         $params = [
             'ns' => $namespaceId,
-            'title' => $pageTitle,
+            'title' => str_replace(' ', '_', $pageTitle),
         ];
         $pages = $conn->executeQuery($query, $params)->fetchAll();
         return count($pages) > 0;
+    }
+
+    /**
+     * Get a list of users who are in one of the given user groups.
+     * @param  Project $project
+     * @param  string[] List of user groups to look for.
+     * @return string[] with keys 'user_name' and 'ug_group'
+     */
+    public function getUsersInGroups(Project $project, $groups)
+    {
+        $cacheKey = $this->getCacheKey(func_get_args(), 'project_useringroups');
+        if ($this->cache->hasItem($cacheKey)) {
+            return $this->cache->getItem($cacheKey)->get();
+        }
+
+        $userTable = $project->getTableName('user');
+        $userGroupsTable = $project->getTableName('user_groups');
+
+        $query = $this->getProjectsConnection()->createQueryBuilder();
+        $query->select(['user_name', 'ug_group'])
+            ->from($userTable)
+            ->join($userTable, $userGroupsTable, null, 'ug_user = user_id')
+            ->where($query->expr()->in('ug_group', ':groups'))
+            ->groupBy('user_name, ug_group')
+            ->setParameter(
+                'groups',
+                $groups,
+                \Doctrine\DBAL\Connection::PARAM_STR_ARRAY
+            );
+        $admins = $query->execute()->fetchAll();
+
+        $cacheItem = $this->cache->getItem($cacheKey);
+        $cacheItem->set($admins)
+            ->expiresAfter(new \DateInterval('PT1H'));
+        $this->cache->save($cacheItem);
+
+        return $admins;
     }
 
     /**

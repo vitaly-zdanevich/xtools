@@ -5,18 +5,14 @@
 
 namespace AppBundle\Controller;
 
-use AppBundle\Helper\ApiHelper;
 use Sensio\Bundle\FrameworkExtraBundle\Configuration\Route;
 use Symfony\Bundle\FrameworkBundle\Controller\Controller;
-use Symfony\Component\HttpFoundation\RedirectResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
-use Xtools\Page;
-use Xtools\PagesRepository;
+use Symfony\Component\HttpFoundation\RedirectResponse;
+use Symfony\Component\HttpFoundation\JsonResponse;
 use Xtools\Project;
-use Xtools\ProjectRepository;
 use Xtools\User;
-use Xtools\UserRepository;
 use Xtools\TopEdits;
 use Xtools\TopEditsRepository;
 use Xtools\Edit;
@@ -24,12 +20,13 @@ use Xtools\Edit;
 /**
  * The Top Edits tool.
  */
-class TopEditsController extends Controller
+class TopEditsController extends XtoolsController
 {
 
     /**
      * Get the tool's shortname.
      * @return string
+     * @codeCoverageIgnore
      */
     public function getToolShortname()
     {
@@ -44,61 +41,29 @@ class TopEditsController extends Controller
      * @Route("/topedits/index.php", name="TopEditsIndex")
      * @Route("/topedits/{project}", name="TopEditsProject")
      * @param Request $request
-     * @param string $project The project name.
      * @return Response
      */
-    public function indexAction(Request $request, $project = null)
+    public function indexAction(Request $request)
     {
-        $project = $request->query->get('project') ?: $project;
-        $username = $request->query->get('username', $request->query->get('user'));
-        $namespace = $request->query->get('namespace');
-        $article = $request->query->get('article');
-
-        // Legacy XTools.
-        $user = $request->query->get('user');
-        if (empty($username) && isset($user)) {
-            $username = $user;
-        }
-        $page = $request->query->get('page');
-        if (empty($article) && isset($page)) {
-            $article = $page;
-        }
-        $wiki = $request->query->get('wiki');
-        $lang = $request->query->get('lang');
-        if (isset($wiki) && isset($lang) && empty($project)) {
-            $project = $lang.'.'.$wiki.'.org';
-        }
-
-        $redirectParams = [
-            'project' => $project,
-            'username' => $username,
-        ];
-        if ($article != '') {
-            $redirectParams['article'] = $article;
-        }
-        if ($namespace != '') {
-            $redirectParams['namespace'] = $namespace;
-        }
+        $params = $this->parseQueryParams($request);
 
         // Redirect if at minimum project and username are provided.
-        if ($project != '' && $username != '') {
-            return $this->redirectToRoute('TopEditsResults', $redirectParams);
+        if (isset($params['project']) && isset($params['username'])) {
+            return $this->redirectToRoute('TopEditsResults', $params);
         }
 
-        // Set default project so we can populate the namespace selector.
-        if (!$project) {
-            $project = $this->container->getParameter('default_project');
-        }
-        $project = ProjectRepository::getProject($project, $this->container);
+        // Convert the given project (or default project) into a Project instance.
+        $params['project'] = $this->getProjectFromQuery($params);
 
-        return $this->render('topedits/index.html.twig', [
+        return $this->render('topedits/index.html.twig', array_merge([
             'xtPageTitle' => 'tool-topedits',
             'xtSubtitle' => 'tool-topedits-desc',
             'xtPage' => 'topedits',
-            'project' => $project,
-            'namespace' => (int) $namespace,
-            'article' => $article,
-        ]);
+
+            // Defaults that will get overriden if in $params.
+            'namespace' => 0,
+            'article' => '',
+        ], $params));
     }
 
     /**
@@ -106,41 +71,20 @@ class TopEditsController extends Controller
      * @Route("/topedits/{project}/{username}/{namespace}/{article}", name="TopEditsResults",
      *     requirements={"article"=".+"})
      * @param Request $request The HTTP request.
-     * @param string $project
-     * @param string $username
      * @param int $namespace
      * @param string $article
      * @return RedirectResponse|Response
+     * @codeCoverageIgnore
      */
-    public function resultAction(Request $request, $project, $username, $namespace = 0, $article = '')
+    public function resultAction(Request $request, $namespace = 0, $article = '')
     {
-        $projectData = ProjectRepository::getProject($project, $this->container);
-
-        if (!$projectData->exists()) {
-            $this->addFlash('danger', ['invalid-project', $project]);
-            return $this->redirectToRoute('topedits');
-        }
-
-        $user = UserRepository::getUser($username, $this->container);
-
-        // Don't continue if the user doesn't exist.
-        if (!$user->existsOnProject($projectData)) {
-            $this->addFlash('danger', 'user-not-found');
-            return $this->redirectToRoute('topedits', [
-                'project' => $project,
-                'namespace' => $namespace,
-                'article' => $article,
-            ]);
-        }
-
-        // Reject users with a crazy high edit count.
-        if ($user->hasTooManyEdits($projectData)) {
-            $this->addFlash('danger', ['too-many-edits', number_format($user->maxEdits())]);
-            return $this->redirectToRoute('topedits', [
-                'project' => $project,
-                'namespace' => $namespace,
-                'article' => $article,
-            ]);
+        // Second parameter causes it return a Redirect to the index if the user has too many edits.
+        // We only want to do this when looking at the user's overall edits, not just to a specific article.
+        $ret = $this->validateProjectAndUser($request, $article !== '' ?  null : 'topedits');
+        if ($ret instanceof RedirectResponse) {
+            return $ret;
+        } else {
+            list($projectData, $user) = $ret;
         }
 
         if ($article === '') {
@@ -157,6 +101,7 @@ class TopEditsController extends Controller
      * @param Project $project The project.
      * @param integer|string $namespace The namespace ID or 'all'
      * @return \Symfony\Component\HttpFoundation\Response
+     * @codeCoverageIgnore
      */
     public function namespaceTopEdits(Request $request, User $user, Project $project, $namespace)
     {
@@ -175,8 +120,6 @@ class TopEditsController extends Controller
                 'project' => $project,
                 'user' => $user,
                 'namespace' => $namespace,
-                'edits' => [],
-                'content_title' => '',
                 'opted_in_page' => $optedInPage,
                 'is_sub_request' => $isSubRequest,
             ]);
@@ -189,10 +132,12 @@ class TopEditsController extends Controller
          */
         $limit = $isSubRequest ? 10 : null;
 
-        $topEdits = new TopEdits($project, $user, $namespace, $limit);
+        $topEdits = new TopEdits($project, $user, null, $namespace, $limit);
         $topEditsRepo = new TopEditsRepository();
         $topEditsRepo->setContainer($this->container);
         $topEdits->setRepository($topEditsRepo);
+
+        $topEdits->prepareData();
 
         return $this->render('topedits/result_namespace.html.twig', [
             'xtPage' => 'topedits',
@@ -212,38 +157,26 @@ class TopEditsController extends Controller
      * @param int $namespaceId The ID of the namespace of the page.
      * @param string $pageName The title (without namespace) of the page.
      * @return RedirectResponse|\Symfony\Component\HttpFoundation\Response
+     * @codeCoverageIgnore
      */
     protected function singlePageTopEdits(User $user, Project $project, $namespaceId, $pageName)
     {
         // Get the full page name (i.e. no namespace prefix if NS 0).
         $namespaces = $project->getNamespaces();
         $fullPageName = $namespaceId ? $namespaces[$namespaceId].':'.$pageName : $pageName;
-        $page = new Page($project, $fullPageName);
-        $pageRepo = new PagesRepository();
-        $pageRepo->setContainer($this->container);
-        $page->setRepository($pageRepo);
 
-        if (!$page->exists()) {
-            // Redirect if the page doesn't exist.
-            $this->addFlash('notice', ['no-result', $pageName]);
-            return $this->redirectToRoute('topedits');
+        $page = $this->getAndValidatePage($project, $fullPageName);
+        if (is_a($page, 'Symfony\Component\HttpFoundation\RedirectResponse')) {
+            return $page;
         }
 
-        // Get all revisions of this page by this user.
-        $revisionsData = $page->getRevisions($user);
+        // FIXME: add pagination.
+        $topEdits = new TopEdits($project, $user, $page);
+        $topEditsRepo = new TopEditsRepository();
+        $topEditsRepo->setContainer($this->container);
+        $topEdits->setRepository($topEditsRepo);
 
-        // Loop through all revisions and format dates, find totals, etc.
-        $totalAdded = 0;
-        $totalRemoved = 0;
-        $revisions = [];
-        foreach ($revisionsData as $revision) {
-            if ($revision['length_change'] > 0) {
-                $totalAdded += $revision['length_change'];
-            } else {
-                $totalRemoved += $revision['length_change'];
-            }
-            $revisions[] = new Edit($page, $revision);
-        }
+        $topEdits->prepareData();
 
         // Send all to the template.
         return $this->render('topedits/result_article.html.twig', [
@@ -252,10 +185,80 @@ class TopEditsController extends Controller
             'project' => $project,
             'user' => $user,
             'page' => $page,
-            'total_added' => $totalAdded,
-            'total_removed' => $totalRemoved,
-            'revisions' => $revisions,
-            'revision_count' => count($revisions),
+            'te' => $topEdits,
         ]);
+    }
+
+    /************************ API endpoints ************************/
+
+    /**
+     * Get the all edits of a user to a specific page, maximum 1000.
+     * @Route("/api/user/topedits/{project}/{username}/{namespace}/{article}", name="UserApiTopEditsArticle",
+     *     requirements={"article"=".+", "namespace"="|\d+|all"})
+     * @Route("/api/user/top_edits/{project}/{username}/{namespace}/{article}", name="UserApiTopEditsArticleUnderscored",
+     *     requirements={"article"=".+", "namespace"="|\d+|all"})
+     * @param Request $request
+     * @param int|string $namespace The ID of the namespace of the page, or 'all' for all namespaces.
+     * @param string $article The title of the page. A full title can be used if the $namespace is blank.
+     * @return Response
+     * TopEdits and its Repo cannot be stubbed here :(
+     * @codeCoverageIgnore
+     */
+    public function topEditsUserApiAction(Request $request, $namespace = 0, $article = '')
+    {
+        $this->recordApiUsage('user/topedits');
+
+        // Second parameter causes it return a Redirect to the index if the user has too many edits.
+        // We only want to do this when looking at the user's overall edits, not just to a specific article.
+        $ret = $this->validateProjectAndUser($request, $article !== '' ?  null : 'topedits');
+        if ($ret instanceof RedirectResponse) {
+            return $ret;
+        } else {
+            list($project, $user) = $ret;
+        }
+
+        if (!$project->userHasOptedIn($user)) {
+            return new JsonResponse(
+                [
+                    'error' => 'User:'.$user->getUsername().' has not opted in to detailed statistics.'
+                ],
+                Response::HTTP_FORBIDDEN
+            );
+        }
+
+        $limit = $article === '' ? 100 : 1000;
+        $topEdits = new TopEdits($project, $user, $namespace, $limit);
+        $topEditsRepo = new TopEditsRepository();
+        $topEditsRepo->setContainer($this->container);
+        $topEdits->setRepository($topEditsRepo);
+
+        $response = new JsonResponse();
+        $response->setEncodingOptions(JSON_NUMERIC_CHECK);
+
+        if ($article === '') {
+            $data = $topEdits->getTopEditsNamespace();
+
+            if (is_numeric($namespace)) {
+                $data = $data[$namespace];
+            }
+        } else {
+            $namespaces = $project->getNamespaces();
+            $fullPageName = is_numeric($namespace) ? $namespaces[$namespace].':'.$article : $article;
+
+            $page = $this->getAndValidatePage($project, $fullPageName);
+            if (is_a($page, 'Symfony\Component\HttpFoundation\RedirectResponse')) {
+                $data = [
+                    'error' => 'Page "'.$article.'" does not exist.',
+                ];
+                $response->setStatusCode(Response::HTTP_NOT_FOUND);
+            } else {
+                // Database sorts by timestamp ascending, and here we want it descending.
+                $data = array_reverse($page->getRevisions($user));
+                $response->setStatusCode(Response::HTTP_OK);
+            }
+        }
+
+        $response->setData($data);
+        return $response;
     }
 }

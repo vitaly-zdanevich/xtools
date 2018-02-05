@@ -11,7 +11,7 @@ use Symfony\Component\Debug\Exception\ContextErrorException;
 use Symfony\Component\HttpFoundation\Request;
 use Sensio\Bundle\FrameworkExtraBundle\Configuration\Route;
 use Xtools\ProjectRepository;
-use Xtools\PagesRepository;
+use Xtools\PageRepository;
 use Xtools\RFX;
 use Xtools\User;
 
@@ -25,6 +25,7 @@ class RfXVoteCalculatorController extends Controller
      * Get the tool's shortname.
      *
      * @return string
+     * @codeCoverageIgnore
      */
     public function getToolShortname()
     {
@@ -89,6 +90,7 @@ class RfXVoteCalculatorController extends Controller
      * @Route("/rfxvote/{project}/{username}", name="rfxvoteResult")
      *
      * @return Response
+     * @codeCoverageIgnore
      */
     public function resultAction($project, $username)
     {
@@ -97,8 +99,8 @@ class RfXVoteCalculatorController extends Controller
         $projectData = ProjectRepository::getProject($project, $this->container);
         $projectRepo = $projectData->getRepository();
         $userData = new User($username);
-        $pagesRepo = new PagesRepository();
-        $pagesRepo->setContainer($this->container);
+        $pageRepo = new PageRepository();
+        $pageRepo->setContainer($this->container);
 
         $dbName = $projectData->getDatabaseName();
 
@@ -184,7 +186,7 @@ class RfXVoteCalculatorController extends Controller
             $titleArray = array_chunk($titles, 20);
 
             foreach ($titleArray as $titlesWorked) {
-                $pageData = $pagesRepo->getPagesWikitext($projectData, $titlesWorked);
+                $pageData = $pageRepo->getPagesWikitext($projectData, $titlesWorked);
 
                 foreach ($pageData as $title => $text) {
                     $type = str_replace('_', ' ', $type);

@@ -40,6 +40,16 @@ class Project extends Model
     }
 
     /**
+     * Unique identifier this Project, to be used in cache keys.
+     * @see Repository::getCacheKey()
+     * @return string
+     */
+    public function getCacheKey()
+    {
+        return $this->getDatabaseName();
+    }
+
+    /**
      * Get 'dbName', 'url' and 'lang' of the project, the relevant basic info
      *   we can get from the meta database. This is all you need to make
      *   database queries. More comprehensive metadata can be fetched with
@@ -218,6 +228,26 @@ class Project extends Model
         return isset($metadata['general']['mainpage'])
             ? $metadata['general']['mainpage']
             : '';
+    }
+
+    /**
+     * Get a list of users who are in one of the given user groups.
+     * @param string[] User groups to search for.
+     * @return string[] User groups keyed by user name.
+     */
+    public function getUsersInGroups($groups)
+    {
+        $users = [];
+        $usersAndGroups = $this->getRepository()->getUsersInGroups($this, $groups);
+        foreach ($usersAndGroups as $userAndGroup) {
+            $username = $userAndGroup['user_name'];
+            if (isset($users[$username])) {
+                array_push($users[$username], $userAndGroup['ug_group']);
+            } else {
+                $users[$username] = [$userAndGroup['ug_group']];
+            }
+        }
+        return $users;
     }
 
     /**

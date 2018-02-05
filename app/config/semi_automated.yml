@@ -20,23 +20,26 @@ parameters:
 
     # These tools work on multiple wikis. These should probably include tags
     #   as the regex may not apply to non-English wikis.
-    # You can also set wiki-specific values that will get merged into the global one.
+    # You can also set wiki-specific regex that will get merged into the global regex.
+    # Other local values such as link, tag and revert are overriden, not merged into the global value.
     # See 'Hugge' under 'global' and 'en.wikipedia.org' for an example.
     global:
         Generic rollback:
+            tag: mw-rollback
             regex: '^(\[\[Help:Reverting\|Reverted\]\]|Reverted) edits by \[\[Special:(Contribs|Contributions)\/.*?\|.*?\]\] \(\[\[User talk:.*?\|talk\]\]\) to last (version|revision) by .*'
             link: Special:MyLanguage/Project:Rollback
             revert: true
         Undo:
             regex: '^(Undid|Undo) revision \d+ by \[\[Special:(Contribs|Contributions)\/.*?\|.*?\]\]'
             link: Special:MyLanguage/Project:Undo
-            revert: true
+            # This is not considered a revert because you can undo
+            # any arbitrary revision, not just the previous one.
         Huggle:
             regex: '\(\[\[WP:HG'
             tag: huggle
             link: w:en:Wikipedia:Huggle
         WPCleaner:
-            regex: 'WP:CLEANER|\[\[\Wikipedia:DPL|\[\[WP:WCW\]\] project \('
+            regex: 'WP:CLEANER|WPCleaner\]\]|\[\[\Wikipedia:DPL|\[\[WP:WCW\]\] project \('
             tag: WPCleaner
             link: Special:MyLanguage/Project:WPCleaner
         IABot:
@@ -53,7 +56,7 @@ parameters:
             link: meta:Special:MyLanguage/Global renamers
         Page move:
             regex: 'moved page \[\[(?!.*?WP:AFCH)|moved \[\[.*?\]\] to \[\['
-            link: Special:MyLanguage/Project:Move
+            link: mw:Special:MyLanguage/Help:Moving a page
         Popups:
             regex: 'Wikipedia:Tools\/Navigation_popups|popups'
             link: w:en:Project:Popups
@@ -205,7 +208,7 @@ parameters:
         For the Common Good:
             regex: 'WP:FTCG\|FtCG'
             link: Project:FTCG
-        User:Technical13/Scripts/OrphanStatus.js:
+        OrphanStatus:
             regex: '\[\[User:Technical_13\/Scripts\/OrphanStatus\|'
             link: User:Technical13/Scripts/OrphanStatus.js
         The Wikipedia Adventure:
@@ -217,6 +220,21 @@ parameters:
         XFDCloser:
             regex: '\[\[WP:XFDC\|XFDcloser'
             link: User:Evad37/XFDcloser.js
+        Rater:
+            regex: '\[\[User:(Evad37\/rater.js|Kephir\/gadgets\/rater)'
+            link: User:Evad37/rater.js
+        revdel:
+            regex: 'using \[\[User:Primefac\/revdel'
+            link: User:Primefac/revdel
+        draft-sorter:
+            regex: '\(draft-sorter\.js\)'
+            link: User:Enterprisey/draft-sorter
+        Xunlink:
+            regex: '\(\[\[User:Evad37\/Xunlink'
+            link: User:Evad37/Xunlink
+        MoveToDraft:
+            regex: '\[\[User:Evad37\/MoveToDraft\.js\|via script'
+            link: User:Evad37/MoveToDraft
     commons.wikimedia.org:
         UploadWizard:
             regex: '^User created page with UploadWizard$'
@@ -258,3 +276,27 @@ parameters:
         RotateLink:
             regex: '\(\[\[Help:RotateLink\|Script'
             link: Help:RotateLink
+    ar.wikipedia.org:
+        Generic rollback:
+            regex: 'استرجاع تعديلات.*حتى آخر نسخة بواسطة'
+        Undo:
+            regex: 'الرجوع عن التعديل \d+ بواسطة'
+        Huggle:
+            regex: '\(\[\[ويكيبيديا:هغل'
+            link: ويكيبيديا:هغل
+        Page move:
+            regex: 'نقل.*?صفحة \[\[.*?إلى \[\['
+            link: ويكيبيديا:نقل_صفحة
+        AutoWikiBrowser:
+            regex: 'Project:أوب'
+            link: ويكيبيديا:أوتوويكي_براوزر
+        HotCat:
+            regex: 'باستخدام \[\[ويكيبيديا:المصناف الفوري'
+            link: ويكيبيديا:المصناف الفوري
+        Popups:
+            link: ويكيبيديا:المنبثقات
+        WPCleaner:
+            link: ويكيبيديا:وب_كلينر
+        Rater:
+            regex: '\[\[:User:FShbib\/المقيم'
+            link: مستخدم:FShbib/المقيم

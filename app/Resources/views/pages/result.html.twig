@@ -11,7 +11,7 @@
 
         <h3 class="text-center">{{ msg('tool-pages') }}</h3>
 
-        {% set multiNamspace = count|length > 1 %}
+        {% set multiNamspace = pages.counts|length > 1 %}
 
         {% if multiNamspace %}
         <div class="text-center xt-toc">
@@ -19,10 +19,10 @@
              # To save real estate, show "Namespace (talk)" as separate links
              # instead of "Namespace" "Namespace talk"
              #}
-            {% for key, value in count if (key is even or (key is odd and not(count[key - 1] is defined))) %}
+            {% for key, value in pages.counts if (key is even or (key is odd and not(pages.counts[key - 1] is defined))) %}
                 <span>
-                    <a href="#{{ key }}" data-section="{{ key }}">{{ nsName(key, namespaces) }}</a>
-                    {% if count[key + 1] is defined %}
+                    <a href="#{{ key }}" data-section="{{ key }}">{{ nsName(key, project.namespaces) }}</a>
+                    {% if pages.counts[key + 1] is defined %}
                         (<a href="#{{ key+1 }}" data-section="{{ key+1 }}">{{ msg('talk')|lower }}</a>)
                     {% endif %}
                 </span>
@@ -36,99 +36,114 @@
                     <tr>
                         <td>{{ msg('namespace') }}</td>
                         <td>
-                            {{ nsName(namespace, namespaces) }}
+                            {{ nsName(pages.namespace, project.namespaces) }}
                         </td>
                     </tr>
                     <tr>
                         <td>{{ msg('redirects') }}</td>
-                        <td>{{ msg('redirfilter-' ~ redirect) }}</td>
+                        <td>{{ msg('redirfilter-' ~ pages.redirects) }}</td>
+                    </tr>
+                    <tr>
+                        <td>{{ msg('deleted-pages') }}</td>
+                        <td>{{ msg('delpagesfilter-' ~ pages.deleted) }}</td>
                     </tr>
                 </tbody></table>
             </div>
             <div style="clear:both"></div>
-            <table class="table table-bordered table-hover table-striped namespaces-table toggle-table">
-                <thead><tr>
-                    {% for key in summaryColumns %}
-                        <th>
-                            <span class="sort-link sort-link--{{ key }}" data-column="{{ key }}">
-                                {{ msg(key)|capitalize_first }}
-                                <span class="glyphicon glyphicon-sort"></span>
-                            </span>
-                        </th>
-                    {% endfor %}
-                </tr></thead>
-                <tbody>
-                    {% for key, value in count %}
-                    <tr>
-                        <td class="sort-entry--namespace linked" data-value="{{ namespaces[key] }}">
-                            {% if multiNamspace %}
-                            <span class="namespace-toggle toggle-table--toggle" data-index="{{ loop.index0 }}" data-key="{{ key }}">
-                                <span class="glyphicon glyphicon-remove"></span>
-                            {% endif %}
-                                <span class="color-icon" style="background:{{ color(key) }}"></span>
-                            {% if multiNamspace %}
-                            </span>
-                            {% endif %}
-
-                            <a href="#{{ key }}" >{{ nsName(key, namespaces) }}</a>
-                        </td>
-                        {% if redirect != 'onlyredirects' %}
-                            <td class="sort-entry--pages" data-value="{{ value.total }}">
-                                {{ value.total }}
-                            </td>
-                        {% endif %}
-                        {% if redirect != 'noredirects' %}
-                            <td class="sort-entry--redirects" data-value="{{ value.redirect }}">
-                                {{ value.redirect }}
-                                {% if redirect != 'onlyredirects' %}
-                                    ({{ value.redirect|percent_format(value.total) }})
-                                {% endif %}
-                            </td>
-                        {% endif %}
-                        <td class="sort-entry--deleted" data-value="{{ value.deleted }}">
-                            {{ value.deleted }}
-                            ({{ value.deleted|percent_format(value.total) }})
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-                {% if pages|length > 1 %}
-                    <tfoot>
-                        <th class="namespaces--namespaces">
-                            {{ pages|length|num_format }}
-                            {{ msg('num-namespaces', [pages|length]) }}
-                        </th>
-                        <th class="namespaces--pages">
-                            {{ total|num_format }}
-                        </th>
-                        {% if 'redirects' in summaryColumns and 'pages' in summaryColumns %}
-                            <th class="namespaces--redirects">
-                                {{ redirectTotal|num_format }}
-                                ({{ redirectTotal|percent_format(total) }})
+            {% if pages.getNumPages == 0 %}
+                <div class="alert alert-info">
+                    {{ msg('no-result', [user.username]) }}
+                </div>
+            {% else %}
+                <table class="table table-bordered table-hover table-striped namespaces-table toggle-table">
+                    <thead><tr>
+                        {% for key in summaryColumns %}
+                            <th>
+                                <span class="sort-link sort-link--{{ key }}" data-column="{{ key }}">
+                                    {{ msg(key)|capitalize_first }}
+                                    <span class="glyphicon glyphicon-sort"></span>
+                                </span>
                             </th>
-                        {% endif %}
-                        <th class="namespaces--deleted">
-                            {{ deletedTotal|num_format }}
-                            ({{ deletedTotal|percent_format(total) }})
-                        </th>
-                    </tfoot>
+                        {% endfor %}
+                    </tr></thead>
+                    <tbody>
+                        {% for key, value in pages.counts %}
+                        <tr>
+                            <td class="sort-entry--namespace linked" data-value="{{ project.namespaces[key] }}">
+                                {% if multiNamspace %}
+                                <span class="namespace-toggle toggle-table--toggle" data-index="{{ loop.index0 }}" data-key="{{ key }}">
+                                    <span class="glyphicon glyphicon-remove"></span>
+                                {% endif %}
+                                    <span class="color-icon" style="background:{{ color(key) }}"></span>
+                                {% if multiNamspace %}
+                                </span>
+                                {% endif %}
+
+                                <a href="#{{ key }}" >{{ nsName(key, project.namespaces) }}</a>
+                            </td>
+                            {% if pages.redirects != 'onlyredirects' %}
+                                <td class="sort-entry--pages" data-value="{{ value.count }}">
+                                    {{ value.count|num_format }}
+                                </td>
+                            {% endif %}
+                            {% if pages.redirects != 'noredirects' %}
+                                <td class="sort-entry--redirects" data-value="{{ value.redirects }}">
+                                    {{ value.redirects|num_format }}
+                                    {% if pages.redirects != 'onlyredirects' %}
+                                        ({{ value.redirects|percent_format(value.count) }})
+                                    {% endif %}
+                                </td>
+                            {% endif %}
+                            {% if pages.deleted == 'both' %}
+                                <td class="sort-entry--deleted" data-value="{{ value.deleted }}">
+                                    {{ value.deleted|num_format }}
+                                    ({{ value.deleted|percent_format(value.count) }})
+                                </td>
+                            {% endif %}
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                    {# Show totals if reporting more than one namespace. #}
+                    {% if pages.numNamespaces > 1 %}
+                        <tfoot>
+                            <th class="namespaces--namespaces">
+                                {{ pages.numNamespaces|num_format }}
+                                {{ msg('num-namespaces', [pages.numNamespaces]) }}
+                            </th>
+                            <th class="namespaces--pages">
+                                {{ pages.getNumPages|num_format }}
+                            </th>
+                            {% if 'redirects' in summaryColumns and 'pages' in summaryColumns %}
+                                <th class="namespaces--redirects">
+                                    {{ pages.numRedirects|num_format }}
+                                    ({{ pages.numRedirects|percent_format(pages.getNumPages) }})
+                                </th>
+                            {% endif %}
+                            {% if pages.deleted == 'both' %}
+                                <th class="namespaces--deleted">
+                                    {{ pages.numDeleted|num_format }}
+                                    ({{ pages.numDeleted|percent_format(pages.getNumPages) }})
+                                </th>
+                            {% endif %}
+                        </tfoot>
+                    {% endif %}
+                </table>
+                {% if pages.namespace == 'all' %}
+                    <div class="chart-wrapper toggle-table--chart">
+                        <canvas id="pie_chart" width="400" height="400"></canvas>
+                    </div>
                 {% endif %}
-            </table>
-            {% if namespace == 'all' %}
-            <div class="chart-wrapper toggle-table--chart">
-                <canvas id="pie_chart" width="400" height="400"></canvas>
-            </div>
             {% endif %}
         {% endset %}
         {{ layout.content_block('summary', content) }}
 
-        {% for key in pages|keys %}
+        {% for ns in pages.results|keys %}
             {% set content %}
-                <table class="table table-bordered table-hover table-striped top-editors-table">
+                <table class="table table-bordered table-hover table-striped pages-table">
                     <thead><tr>
                         <th>#</th>
                         {% set columns = ['page-title', 'date', 'original-size', 'current-size'] %}
-                        {% if key == '0' and hasPageAssessments %}
+                        {% if ns == '0' and pages.hasPageAssessments %}
                             {% set columns = columns|merge(['assessment']) %}
                         {% endif %}
                         {% for thKey in columns %}
@@ -144,84 +159,117 @@
                     <tbody>
                         {% set index = 0 %}
                         {% set maxRows = 100 %}
-                        {% for date,pageList in pages[key] if not(multiNamspace) or (index < maxRows and multiNamspace) %}
-                            {% for page in pageList if not(multiNamspace) or (index < maxRows and multiNamspace) %}
-                                {% set index = index + 1 %}
-                                {% if key == 0 %}
-                                    {% set pagename = page.page_title %}
-                                {% else %}
-                                    {% set pagename = namespaces[key] ~ ":" ~ page.page_title %}
-                                {% endif %}
-                                <tr>
-                                    <td>{{ index }}</td>
-                                    <td class="sort-entry--page-title" data-value="{{ pagename }}">
-                                        {% if page.page_is_redirect %}
-                                            {{ wiki.pageLinkRaw(pagename ~ '?redirect=no', project, pagename) }}
-                                            <small class="text-muted">&middot; ({{ msg('redirect') }})</small>
-                                        {% else %}
-                                            {{ wiki.pageLinkRaw(pagename, project) }}
-                                        {% endif %}
-                                        {% if page.type == 'arc' %}
-                                            <small class="text-danger">&middot; ({{ msg('deleted') }})</small>
-                                        {% endif %}
-                                    </td>
-                                    <td class="sort-entry--date" data-value="{{ date }}">
-                                        {% if page.type == 'arc' %}
-                                            {{ wiki.pageLinkRaw('Special:Undelete/' ~ pagename ~ '?timestamp=' ~ page.raw_time, project, page.human_time) }}
-                                        {% else %}
-                                            {{ wiki.permaLinkRaw(page.rev_id, project, page.human_time) }}
-                                        {% endif %}
-                                    </td>
-                                    <td class="sort-entry--original-size" data-value="{{ page.rev_len }}">
-                                        {{ page.rev_len|num_format }}
-                                    </td>
-                                    <td class="sort-entry--current-size" data-value="{{ page.page_len }}">
-                                        {{ page.page_len|num_format }}
-                                    </td>
-                                    {% if key == '0' and hasPageAssessments %}
-                                        <td class="sort-entry--assessment" data-value="{{ page.pa_class ? page.pa_class : 'Unknown' }}">
-                                            {% if page.badge is defined %}
-                                            <img alt="{{ page.pa_class }}" src="{{ page.badge }}" class="assessment-badge" />
-                                            {% endif %}
-                                            {{ page.pa_class ? page.pa_class : msg('unknown') }}
-                                        </td>
+                        {% for page in pages.results[ns] if not(multiNamspace) or (index < maxRows and multiNamspace) %}
+                            {% set index = index + 1 %}
+                            {% if ns == 0 %}
+                                {% set pagename = page.page_title %}
+                            {% else %}
+                                {% set pagename = project.namespaces[ns] ~ ":" ~ page.page_title %}
+                            {% endif %}
+                            <tr>
+                                <td>{{ index }}</td>
+                                <td class="sort-entry--page-title" data-value="{{ pagename }}">
+                                    {% if page.page_is_redirect %}
+                                        {{ wiki.pageLinkRaw(pagename, project, pagename, 'redirect=no') }}
+                                        <small class="text-muted">&middot; ({{ msg('redirect') }})</small>
+                                    {% else %}
+                                        {{ wiki.pageLinkRaw(pagename, project) }}
                                     {% endif %}
-                                    <td>
-                                        {{ wiki.pageLogLinkRaw(pagename, project) }}
-                                        &middot;
-                                        {{ wiki.pageHistLinkRaw(pagename, project) }}
-                                        {% if enabled('articleinfo') %}
-                                            &middot;
-                                            <a href="{{ path('articleinfo', { 'project': project.domain, 'article': pagename }) }}">{{ msg('tool-articleinfo') }}</a>
+                                    {% if page.type == 'arc' %}
+                                        <small class="text-danger">&middot; ({{ msg('deleted') }})</small>
+                                    {% endif %}
+                                </td>
+                                <td class="sort-entry--date" data-value="{{ page.raw_time }}">
+                                    {% if page.type == 'arc' %}
+                                        {{ wiki.pageLinkRaw('Special:Undelete/' ~ pagename, project, page.human_time, 'timestamp=' ~ page.raw_time) }}
+                                    {% else %}
+                                        {{ wiki.permaLinkRaw(page.rev_id, project, page.human_time) }}
+                                    {% endif %}
+                                </td>
+                                <td class="sort-entry--original-size" data-value="{{ page.rev_len }}">
+                                    {{ page.rev_len|num_format }}
+                                </td>
+                                <td class="sort-entry--current-size" data-value="{{ page.page_len }}">
+                                    {{ page.page_len|num_format }}
+                                </td>
+                                {% if ns == '0' and pages.hasPageAssessments %}
+                                    <td class="sort-entry--assessment" data-value="{{ page.pa_class ? page.pa_class : 'Unknown' }}">
+                                        {% if page.badge is defined %}
+                                        <img alt="{{ page.pa_class }}" src="{{ page.badge }}" class="assessment-badge" />
                                         {% endif %}
-                                        {% if enabled('topedits') %}
-                                            &middot;
-                                            <a href="{{ path('topedits', { 'project': project.domain, 'username': user.username, 'namespace': namespace, 'page': page.page_title }) }}">{{ msg('tool-topedits') }}</a>
-                                        {% endif %}
-                                        {% if isWMFLabs() %}
-                                            &middot;
-                                            <a target="_blank" href="https://tools.wmflabs.org/pageviews?project={{ project.domain }}&amp;pages={{ pagename|e('url') }}">
-                                                {{ msg('pageviews') }}
-                                            </a>
-                                        {% endif %}
+                                        {{ page.pa_class ? page.pa_class : msg('unknown') }}
                                     </td>
-                                </tr>
-                            {% endfor %}
+                                {% endif %}
+                                <td>
+                                    {{ wiki.pageLogLinkRaw(pagename, project) }}
+                                    &middot;
+                                    {{ wiki.pageHistLinkRaw(pagename, project) }}
+                                    {% if enabled('articleinfo') %}
+                                        &middot;
+                                        <a href="{{ path('articleinfo', { 'project': project.domain, 'article': pagename }) }}">{{ msg('tool-articleinfo') }}</a>
+                                    {% endif %}
+                                    {% if enabled('topedits') %}
+                                        &middot;
+                                        <a href="{{ path('topedits', { 'project': project.domain, 'username': user.username, 'namespace': pages.namespace, 'page': page.page_title }) }}">{{ msg('tool-topedits') }}</a>
+                                    {% endif %}
+                                    {% if isWMFLabs() %}
+                                        &middot;
+                                        <a target="_blank" href="https://tools.wmflabs.org/pageviews?project={{ project.domain }}&amp;pages={{ pagename|e('url') }}">
+                                            {{ msg('pageviews') }}
+                                        </a>
+                                    {% endif %}
+                                </td>
+                            </tr>
                         {% endfor %}
-                        {% if count[key].total > maxRows and multiNamspace %}
+                        {% if pages.counts[ns].count > maxRows and multiNamspace %}
                             <tr class="show-more-row">
                                 <td></td>
                                 <td colspan=6>
-                                    <a href="{{ path('pages', { 'project': project.domain, 'username': user.username, 'namespace': key, 'redirects': redirect }) }}">
-                                        {{ count[key].total - maxRows }} {{ msg('num-others', [count[key].total - maxRows]) }}
+                                    <a href="{{ path('pages', { 'project': project.domain, 'username': user.username, 'namespace': ns, 'redirects': pages.redirects }) }}">
+                                        {{ (pages.counts[ns].count - maxRows)|number_format }} {{ msg('num-others', [pages.counts[ns].count - maxRows]) }}
                                     </a>
                                 </td>
                             </tr>
                         {% endif %}
                     </tbody>
                 </table>
+
+                {##### PAGINATION #####}
+                {% set numPages = (pages.getNumPages / pages.resultsPerPage)|round(0, 'ceil') %}
+                {% if not(multiNamspace) and numPages > 1 %}
+                    {% set hasPrev = pages.offset - 1 >= 0 %}
+                    {% set hasNext = pages.offset + 1 < numPages %}
+                    {% set pathVars = {'project': project.domain, 'username': user.username, 'namespace': pages.namespace, 'redirects': pages.redirects} %}
+
+                    <nav aria-label="...">
+                        <ul class="pagination xt-pagination">
+                            <li{% if not(hasPrev) %} class="disabled"{% endif %}>
+                                {% if hasPrev %}
+                                    <a href="{{ path('pages', pathVars|merge({'offset': pages.offset - 1})) }}" aria-label="Previous">
+                                {% endif %}
+                                <span aria-hidden="true">&laquo;</span>
+                                {% if hasPrev %}</a>{% endif %}
+                            </li>
+                            {% for page in 1..numPages %}
+                                {% set active = pages.offset == loop.index0 %}
+                                <li{% if active %} class="active"{% endif %}>
+                                    <a href="{{ path('pages', pathVars|merge({'offset': loop.index0})) }}">
+                                        {{ page }} {% if active %}<span class="sr-only">(current)</span>{% endif %}
+                                    </a>
+                                </li>
+                            {% endfor %}
+                            <li{% if not(hasNext) %} class="disabled"{% endif %}>
+                                {% if hasNext %}
+                                    <a href="{{ path('pages', pathVars|merge({'offset': pages.offset + 1})) }}" aria-label="Next">
+                                {% endif %}
+                                <span aria-hidden="true">&raquo;</span>
+                                {% if hasNext %}</a>{% endif %}
+                            </li>
+                        </ul>
+                    </nav>
+                {% endif %}
             {% endset %}
-            {{ layout.content_block(nsName(key, namespaces), content, null, key, true) }}
+            {{ layout.content_block(nsName(ns, project.namespaces), content, null, ns, true) }}
         {% endfor %}
 
         <div class="text-muted times-in-utc" style="clear:both">
@@ -229,8 +277,8 @@
         </div>
     </div>
 
-    {% if namespace == 'all' %}
-        {% set nsIds = count|keys %}
+    {% if pages.namespace == 'all' %}
+        {% set nsIds = pages.counts|keys %}
         <script>
             var ctx = document.getElementById("pie_chart");
             window.pieChart = new Chart(ctx, {
@@ -238,13 +286,13 @@
                 data: {
                     labels: [
                         {% for ns in nsIds %}
-                            "{{ nsName(ns, namespaces) }}"{% if not loop.last %},{% endif %}
+                            "{{ nsName(ns, project.namespaces) }}"{% if not loop.last %},{% endif %}
                         {% endfor %}
                     ],
                     datasets: [{
                         data: [
-                            {% for value in count %}
-                                {% if value.total is defined %}{{ value.total }}{% else %}0{% endif %}{% if not loop.last %},{% endif %}
+                            {% for value in pages.counts %}
+                                {% if value.count is defined %}{{ value.count }}{% else %}0{% endif %}{% if not loop.last %},{% endif %}
                             {% endfor %}
                         ],
                         backgroundColor: [
@@ -267,7 +315,7 @@
                     }
                 }
             });
-            window.countsByNamespace = {{ count|json_encode()|raw }};
+            window.countsByNamespace = {{ pages.counts|json_encode()|raw }};
         </script>
     {% endif %}
 </div>

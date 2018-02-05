@@ -39,10 +39,16 @@ class Edit extends Model
     /** @var string The edit summary */
     protected $comment;
 
+    /** @var string The SHA-1 of the wikitext as of the revision. */
+    protected $sha;
+
+    /** @var bool Whether this edit was later reverted. */
+    protected $reverted;
+
     /**
      * Edit constructor.
      * @param Page $page
-     * @param string[] $attrs Attributes, as retrieved by PagesRepository->getRevisions()
+     * @param string[] $attrs Attributes, as retrieved by PageRepository::getRevisions()
      */
     public function __construct(Page $page, $attrs)
     {
@@ -67,6 +73,27 @@ class Edit extends Model
 
         $this->user = new User($attrs['username']);
         $this->comment = $attrs['comment'];
+
+        if (isset($attrs['rev_sha1']) || isset($attrs['sha'])) {
+            $this->sha = isset($attrs['rev_sha1'])
+                ? $attrs['rev_sha1']
+                : $attrs['sha'];
+        }
+
+        // This can be passed in to save as a property on the Edit instance.
+        // Note that the Edit class knows nothing about it's value, and
+        // is not capable of detecting whether the given edit was reverted.
+        $this->reverted = isset($attrs['reverted']) ? (bool)$attrs['reverted'] : null;
+    }
+
+    /**
+     * Unique identifier for this Edit, to be used in cache keys.
+     * @see Repository::getCacheKey()
+     * @return string
+     */
+    public function getCacheKey()
+    {
+        return $this->id;
     }
 
     /**
@@ -188,24 +215,72 @@ class Edit extends Model
     }
 
     /**
+     * Get the SHA-1 of the revision.
+     * @return string
+     */
+    public function getSha()
+    {
+        return $this->sha;
+    }
+
+    /**
+     * Was this edit reported as having been reverted?
+     * The value for this is merely passed in from precomputed data.
+     * @return bool
+     */
+    public function isReverted()
+    {
+        return $this->reverted;
+    }
+
+    /**
      * Get edit summary as 'wikified' HTML markup
+     * @param bool $useUnnormalizedPageTitle Use the unnormalized page title to avoid
+     *   an API call. This should be used only if you fetched the page title via other
+     *   means (SQL query), and is not from user input alone.
      * @return string Safe HTML
      */
-    public function getWikifiedComment()
+    public function getWikifiedComment($useUnnormalizedPageTitle = false)
     {
-        $summary = htmlspecialchars($this->getSummary(), ENT_NOQUOTES);
+        return self::wikifyString(
+            $this->getSummary(),
+            $this->getProject(),
+            $this->page,
+            $useUnnormalizedPageTitle
+        );
+    }
+
+    /**
+     * Public static method to wikify a summary, can be used on any arbitrary string.
+     * Does NOT support section links unless you specify a page.
+     * @param string $summary
+     * @param Project $project
+     * @param Page $page
+     * @param bool $useUnnormalizedPageTitle Use the unnormalized page title to avoid
+     *   an API call. This should be used only if you fetched the page title via other
+     *   means (SQL query), and is not from user input alone.
+     * @static
+     * @return string
+     */
+    public static function wikifyString(
+        $summary,
+        Project $project,
+        Page $page = null,
+        $useUnnormalizedPageTitle = false
+    ) {
+        $summary = htmlspecialchars($summary, ENT_NOQUOTES);
         $sectionMatch = null;
         $isSection = preg_match_all("/^\/\* (.*?) \*\//", $summary, $sectionMatch);
 
-        if ($isSection) {
-            $pageUrl = $this->getProject()->getUrl(false) . str_replace(
+        if ($isSection && isset($page)) {
+            $pageUrl = $project->getUrl(false) . str_replace(
                 '$1',
-                $this->getPage()->getTitle(),
-                $this->getProject()->getArticlePath()
+                $page->getTitle($useUnnormalizedPageTitle),
+                $project->getArticlePath()
             );
             $sectionTitle = $sectionMatch[1][0];
 
-            // Must have underscores for the link to properly go to the section
+            // Must have underscores for the link to properly go to the section.
             $sectionTitleLink = htmlspecialchars(str_replace(' ', '_', $sectionTitle));
 
             $sectionWikitext = "<a target='_blank' href='$pageUrl#$sectionTitleLink'>&rarr;</a>" .
@@ -222,11 +297,11 @@ class Edit extends Model
                 isset($wikiLinkParts[1]) ? $wikiLinkParts[1] : $wikiLinkPath
             );
 
-            // Use normalized page title (underscored, capitalized)
-            $pageUrl = $this->getProject()->getUrl(false) . str_replace(
+            // Use normalized page title (underscored, capitalized).
+            $pageUrl = $project->getUrl(false) . str_replace(
                 '$1',
                 ucfirst(str_replace(' ', '_', $wikiLinkPath)),
-                $this->getProject()->getArticlePath()
+                $project->getArticlePath()
             );
 
             $link = "<a target='_blank' href='$pageUrl'>$wikiLinkText</a>";

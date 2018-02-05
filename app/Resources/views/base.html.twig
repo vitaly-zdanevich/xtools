@@ -1,3 +1,5 @@
+{% import 'macros/layout.html.twig' as layout %}
+
 <!DOCTYPE html>
 <html lang="{{ lang() }}"{% if isRTL() %} dir="rtl"{% endif %}>
 <head>
@@ -38,6 +40,8 @@
             'static/css/autoedits.scss'
             'static/css/editcounter.scss'
             'static/css/pages.scss'
+            'static/css/meta.scss'
+            'static/css/topedits.scss'
             output='static/production/application.css' %}
         <link rel="stylesheet" href="{{ asset_url }}" />
         {% endstylesheets %}
@@ -49,6 +53,7 @@
             'chartjs/Chart.min.js'
             'static/js/core_extensions.js'
             'static/js/application.js'
+            'static/js/articleinfo.js'
             'static/js/autoedits.js'
             'static/js/editcounter.js'
             'static/js/pages.js'
@@ -141,28 +146,23 @@
 
 <div class="site-notice">
     {% if noticeDisplay is defined and noticeDisplay == true %}
-        <p class='alert {% if noticeStyle is defined %}alert-{{ noticeStyle }}{% else %}alert-danger{% endif %} xt-alert'>
-            {% if noticeText is defined %}{{ msgPrintExists(noticeText) }}
-            {% else %}No notice has been defined but the notice has been turned on. Poke a maintainer to fix this.
-            {% endif %}
-        </p>
+        {{ layout.alert(noticeStyle, noticeText) }}
     {% endif %}
 
     {% if app.session.flashBag.peekAll %}
         {% for level, messages in app.session.flashBag.all %}
             {% set level = level == 'notice' ? 'danger' : level %}
-            <p class="alert alert-{{ level }} xt-alert">
-                {{ msgPrintExists(messages[0]) }}
-            </p>
+            {{ layout.alert(level, messages[0]) }}
         {% endfor %}
     {% endif %}
 
-    {# {% set replagValue = replag() %}
-    {% if replagValue > getReplagThreshold() %}
-        <p class="alert alert-warning xt-alert">
-            {{ msgPrintExists('high-replag', [formatDuration(replagValue)]) }}
-        </p>
-    {% endif %} #}
+    {# Show replag on result pages, if applicable #}
+    {% if xtTitle is defined %}
+        {% set replagValue = replag() %}
+        {% if replagValue > getReplagThreshold() %}
+            {{ layout.alert('warning', 'high-replag', [formatDuration(replagValue)]) }}
+        {% endif %}
+    {% endif %}
 </div>
 
 <div id="wrapper">
@@ -203,17 +203,16 @@
         <div class="footer-about">
             <span>
                 {# The release process is documented at https://xtools.readthedocs.io/en/latest/development.html#releases #}
-                &copy; 2008-2017
+                &copy; 2008-2018
                 &middot;
                 <a href="https://github.com/x-tools/xtools/releases/tag/{{ version }}" target="_blank" title="Current XTools version">v.{{ version }}</a>
                 (<a href="https://github.com/x-tools/xtools/tree/{{ hash() }}" target="_blank" title="Current code revision">r.{{ shortHash() }}</a>)
                 &middot;
                 <a href="{{ path('aboutPage') }}">{{ msg('about-xtools') }}</a>
                 &middot;
-                <a href='https://phabricator.wikimedia.org/maniphest/task/create/?title=PLEASE REPLACE WITH A DESCRIPTION OF THE ISSUE&amp;projects=XTools&amp;description=Please provide any further details here%0A%0AXTools version: {{ version }}-{{ shortHash() }}' target=_blank>{{ msg('report-issue') }}</a>
+                <a target="_blank" href="https://xtools.readthedocs.io/en/stable/api/index.html">API</a>
                 &middot;
-                <a href="irc://irc.freenode.net/#wikimedia-xtools" target="_blank">#wikimedia-xtools</a>
-                <sup><a style="color:green" href="https://webchat.freenode.net/?channels=#wikimedia-xtools" target="_blank">{{ msg('web-chat') }}</a></sup>
+                {% include 'default/_report_issue_links.html.twig' %}
             </span>
             {% set translateWikiLink = "<a href='https://translatewiki.net'>translatewiki.net</a>" %}
             {% set intuitionLink = "<a href='https://tools.wmflabs.org/intuition/#tab-about'>Intuition</a>" %}

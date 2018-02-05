@@ -11,7 +11,7 @@ use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 use Xtools\ProjectRepository;
 use Xtools\Page;
-use Xtools\PagesRepository;
+use Xtools\PageRepository;
 use Xtools\UserRepository;
 use Xtools\RFX;
 
@@ -25,6 +25,7 @@ class RfXAnalysisController extends Controller
      * Get the tool's shortname.
      *
      * @return string
+     * @codeCoverageIgnore
      */
     public function getToolShortname()
     {
@@ -112,6 +113,7 @@ class RfXAnalysisController extends Controller
      * @Route("/rfx/{project}/{type}/{username}", name="rfxAnalysisResult")
      *
      * @return Response|RedirectResponse
+     * @codeCoverageIgnore
      */
     public function resultAction($project, $type, $username)
     {
@@ -141,7 +143,7 @@ class RfXAnalysisController extends Controller
 
         $pagename .= '/'.$user->getUsername();
         $page = new Page($projectData, $pagename);
-        $pageRepo = new PagesRepository();
+        $pageRepo = new PageRepository();
         $pageRepo->setContainer($this->container);
         $page->setRepository($pageRepo);
 

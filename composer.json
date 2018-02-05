@@ -39,7 +39,7 @@
         "incenteev/composer-parameter-handler": "^2.0",
         "twbs/bootstrap": "^3.1",
         "Krinkle/intuition": "^0.2",
-        "nnnick/chartjs": "2.6.0",
+        "nnnick/chartjs": "2.7.0",
         "addwiki/mediawiki-api": "^0.7",
         "mediawiki/oauthclient": "^0.1",
         "symfony/assetic-bundle": "^2.8",
@@ -59,7 +59,8 @@
         "phpunit/phpunit": "^4.8",
         "symfony/phpunit-bridge": "^3.0",
         "squizlabs/php_codesniffer": "^2.0",
-        "jakub-onderka/php-parallel-lint": "^0.9"
+        "jakub-onderka/php-parallel-lint": "^0.9",
+        "mediawiki/minus-x": "0.3.0"
     },
     "scripts": {
         "node_scripts": [
@@ -82,6 +83,19 @@
             "Sensio\\Bundle\\DistributionBundle\\Composer\\ScriptHandler::installRequirementsFile",
             "Sensio\\Bundle\\DistributionBundle\\Composer\\ScriptHandler::prepareDeploymentTarget",
             "@node_scripts"
+        ],
+        "test": [
+            "composer validate --ansi",
+            "./vendor/bin/parallel-lint --exclude vendor .",
+            "./vendor/bin/phpcs -s . --ignore=/home/scrutinizer/build/node_modules",
+            "{ [ ! -f 'phpDocumentor.phar' ] && curl -L https://github.com/phpDocumentor/phpDocumentor2/releases/download/v2.9.0/phpDocumentor.phar --output phpDocumentor.phar; } || true",
+            "php phpDocumentor.phar -d src -t docs/api --template='checkstyle' --ansi && ( [ -z $(grep 'error' docs/api/checkstyle.xml) ] )",
+            "./vendor/bin/phpunit tests --coverage-clover=coverage.xml",
+            "./vendor/bin/minus-x check ."
+        ],
+        "fix": [
+            "./vendor/bin/phpcbf .",
+            "./vendor/bin/minus-x fix ."
         ]
     },
     "extra": {
