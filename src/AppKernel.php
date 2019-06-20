@@ -40,6 +40,7 @@ class AppKernel extends Kernel
             new EightPoints\Bundle\GuzzleBundle\EightPointsGuzzleBundle(),
             new JMS\SerializerBundle\JMSSerializerBundle(),
             new Nelmio\CorsBundle\NelmioCorsBundle(),
+            new Wikimedia\ToolforgeBundle\ToolforgeBundle(),
             new AppBundle\AppBundle(),
         ];
 

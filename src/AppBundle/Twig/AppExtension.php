@@ -72,16 +72,7 @@ class AppExtension extends AbstractExtension
         return [
             new TwigFunction('request_time', [$this, 'requestTime']),
             new TwigFunction('memory_usage', [$this, 'requestMemory']),
-            new TwigFunction('msgIfExists', [$this, 'msgIfExists'], ['is_safe' => ['html']]),
-            new TwigFunction('msgExists', [$this, 'msgExists'], ['is_safe' => ['html']]),
-            new TwigFunction('msg', [$this, 'msg'], ['is_safe' => ['html']]),
-            new TwigFunction('lang', [$this, 'getLang']),
-            new TwigFunction('langName', [$this, 'getLangName']),
             new TwigFunction('fallbackLangs', [$this, 'getFallbackLangs']),
-            new TwigFunction('allLangs', [$this, 'getAllLangs']),
-            new TwigFunction('isRTL', [$this, 'isRTL']),
-            new TwigFunction('shortHash', [$this, 'gitShortHash']),
-            new TwigFunction('hash', [$this, 'gitHash']),
             new TwigFunction('releaseDate', [$this, 'gitDate']),
             new TwigFunction('enabled', [$this, 'toolEnabled']),
             new TwigFunction('tools', [$this, 'tools']),
@@ -93,7 +84,6 @@ class AppExtension extends AbstractExtension
             new TwigFunction('replag', [$this, 'replag']),
             new TwigFunction('quote', [$this, 'quote']),
             new TwigFunction('bugReportURL', [$this, 'bugReportURL']),
-            new TwigFunction('logged_in_user', [$this, 'loggedInUser']),
             new TwigFunction('isUserAnon', [$this, 'isUserAnon']),
             new TwigFunction('nsName', [$this, 'nsName']),
             new TwigFunction('titleWithNs', [$this, 'titleWithNs']),
@@ -130,100 +120,12 @@ class AppExtension extends AbstractExtension
     }
 
     /**
-     * Get an i18n message.
-     * @param string $message
-     * @param string[] $vars
-     * @return string|null
-     */
-    public function msg(string $message = '', array $vars = []): ?string
-    {
-        return $this->i18n->msg($message, $vars);
-    }
-
-    /**
-     * See if a given i18n message exists.
-     * @param string $message The message.
-     * @param string[] $vars
-     * @return bool
-     */
-    public function msgExists(?string $message, array $vars = []): bool
-    {
-        return $this->i18n->msgExists($message, $vars);
-    }
-
-    /**
-     * Get an i18n message if it exists, otherwise just get the message key.
-     * @param string $message
-     * @param string[] $vars
-     * @return string
-     */
-    public function msgIfExists(?string $message, array $vars = []): string
-    {
-        return $this->i18n->msgIfExists($message, $vars);
-    }
-
-    /**
-     * Get the current language code.
-     * @return string
-     */
-    public function getLang(): string
-    {
-        return $this->i18n->getLang();
-    }
-
-    /**
-     * Get the current language name (defaults to 'English').
-     * @return string
-     */
-    public function getLangName(): string
-    {
-        return $this->i18n->getLangName();
-    }
-
-    /**
      * Get the fallback languages for the current language, so we know what to load with jQuery.i18n.
      * @return string[]
      */
     public function getFallbackLangs(): array
     {
         return $this->i18n->getFallbacks();
-    }
-
-    /**
-     * Get all available languages in the i18n directory
-     * @return string[] Associative array of langKey => langName
-     */
-    public function getAllLangs(): array
-    {
-        return $this->i18n->getAllLangs();
-    }
-
-    /**
-     * Whether the current language is right-to-left.
-     * @param string|null $lang Optionally provide a specific lanuage code.
-     * @return bool
-     */
-    public function isRTL(?string $lang = null): bool
-    {
-        return $this->i18n->isRTL($lang);
-    }
-
-    /**
-     * Get the short hash of the currently checked-out Git commit.
-     * @return string
-     */
-    public function gitShortHash(): string
-    {
-        return exec('git rev-parse --short HEAD');
-    }
-
-    /**
-     * Get the full hash of the currently checkout-out Git commit.
-     * @return string
-     */
-    public function gitHash(): string
-    {
-        return exec('git rev-parse HEAD');
     }
 
     /**
@@ -489,15 +391,6 @@ class AppExtension extends AbstractExtension
         $quotes = $this->container->getParameter('quotes');
         $id = array_rand($quotes);
         return $quotes[$id];
-    }
-
-    /**
-     * Get the currently logged in user's details.
-     * @return string[]|object|null
-     */
-    public function loggedInUser()
-    {
-        return $this->container->get('session')->get('logged_in_user');
     }
 
     /*********************************** FILTERS ***********************************/

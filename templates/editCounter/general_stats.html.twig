@@ -423,7 +423,7 @@
                     <tr>
                         <td>
                             {% if topProj.project.databaseName == project.databaseName %}
-                                <span title="{{ msg('selected') }}">{% if isRTL() %}&#9668;{% else %}&#9658;{% endif %}</span>
+                                <span title="{{ msg('selected') }}">{% if is_rtl() %}&#9668;{% else %}&#9658;{% endif %}</span>
                             {% endif %}
                             {# use project.domain instead of title due to limited space available in the interface #}
                             <a href="{{ path('EditCounterResult', {project:topProj.project.domain, username:user.username}) }}">

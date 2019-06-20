@@ -152,3 +152,7 @@ eight_points_guzzle:
                 headers:
                     Accept: "application/json"
                 timeout: 30
+
+toolforge:
+    intuition:
+        domain: 'xtools'

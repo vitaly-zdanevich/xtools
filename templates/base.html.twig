@@ -1,7 +1,7 @@
 {% import 'macros/layout.html.twig' as layout %}
 
 <!DOCTYPE html>
-<html lang="{{ lang() }}"{% if isRTL() %} dir="rtl"{% endif %}>
+<html lang="{{ lang() }}"{% if is_rtl() %} dir="rtl"{% endif %}>
 <head>
     <title>
         {% if xtTitle is defined %}{{ xtTitle }} - {% endif %}{% if xtPage != 'home' and xtPage != '' %}{{ msg('tool-' ~ xtPage|lower) }} - {% endif %}{{ msg('xtools-title') }}
@@ -18,11 +18,12 @@
             i18nPaths["{{ lang }}"] = "{{ asset('i18n/' ~ lang ~ '.json') }}";
         {% endfor %}
 
-        i18nRTL = {% if isRTL() %}true{% else %}false{% endif %};
+        i18nRTL = {% if is_rtl() %}true{% else %}false{% endif %};
     </script>
 
     {% block javascripts %}
         <script type="text/javascript" src="https://tools-static.wmflabs.org/cdnjs/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
+        {% include '@toolforge/i18n.html.twig' %}
         <script type="text/javascript" src="{{ asset('assets/app.js') }}"></script>
         <script type="text/javascript" src="https://tools-static.wmflabs.org/cdnjs/ajax/libs/twitter-bootstrap/3.3.7/js/bootstrap.min.js"></script>
         <script src="https://tools-static.wmflabs.org/cdnjs/ajax/libs/select2/4.0.5/js/select2.full.min.js"></script>
@@ -31,7 +32,7 @@
         <link rel="stylesheet" type="text/css" media="screen" href="https://tools-static.wmflabs.org/cdnjs/ajax/libs/twitter-bootstrap/3.3.7/css/bootstrap.min.css">
         <link rel="stylesheet" type="text/css" media="screen" href="https://tools-static.wmflabs.org/cdnjs/ajax/libs/select2/4.0.5/css/select2.min.css">
         <link rel="stylesheet" type="text/css" media="screen" href="{{ asset('assets/app.css') }}">
-        {% if isRTL() %}
+        {% if is_rtl() %}
             <link rel="stylesheet" type="text/css" href="https://tools-static.wmflabs.org/cdnjs/ajax/libs/bootstrap-rtl/3.4.0/css/bootstrap-flipped.min.css">
         {% endif %}
     {% endblock %}
@@ -51,7 +52,7 @@
     {% endif %}
 </head>
 
-<body class="{{ xtPage|lower }}{% if isRTL() %} rtl{% endif %}" >
+<body class="{{ xtPage|lower }}{% if is_rtl() %} rtl{% endif %}" >
 {# Link to a page that throws a 500, with "possible spider detected." #}
 <a class="hidden-link" href="/foo" style="visibility: hidden;"></a>
 <header class="navbar navbar-default navbar-top" role="navigation">
@@ -69,7 +70,7 @@
                     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
                       <path d="M12.87 15.07l-2.54-2.51.03-.03c1.74-1.94 2.98-4.17 3.71-6.53H17V4h-7V2H8v2H1v1.99h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.09 5.02L4 19l5-5 3.11 3.11.76-2.04zM18.5 10h-2L12 22h2l1.12-3h4.75L21 22h2l-4.5-12zm-2.62 7l1.62-4.33L19.12 17h-3.24z"></path>
                     </svg>
-                    {{ langName() }}
+                    {{ lang_name() }}
                     <span class="caret"></span>
                 </button>
                 <ul class="dropdown-menu dropdown-menu-right">
@@ -77,7 +78,7 @@
                         <a href="https://translatewiki.net/w/i.php?title=Special:MessageGroupStats&amp;group=xtools">{{ msg('help-translate') }}</a>
                     </li>
                     <li class="divider" role="separator"></li>
-                    {% for key, value in allLangs()|filter(key => key != 'qqq') %}
+                    {% for key, value in all_langs()|filter(key => key != 'qqq') if key != 'qqq' %}
                         <li>
                             <a class="lang-link" href="{{ path(app.request.attributes.get('_route'), app.request.get('_route_params')|merge({'uselang': key})) }}" data-lang="{{ key }}">{{ value|e }}</a>
                         </li>
@@ -89,12 +90,12 @@
 
         <li>
         {% if logged_in_user() %}
-            <a class="btn btn-default logout-btn" href="{{ path('logout') }}" title="{{ msg("logout-msg", [logged_in_user().username]) }}">
+            <a class="btn btn-default logout-btn" href="{{ path('toolforge_logout') }}" title="{{ msg("logout-msg", [logged_in_user().username]) }}">
                 <span class="glyphicon glyphicon-user"></span>
                 {{ msg("logout") }}
             </a>
         {% else %}
-            <a class="btn btn-default login-btn" href="{{ path('login') }}">
+            <a class="btn btn-default login-btn" href="{{ path('toolforge_login', {'callback': url('toolforge_oauth_callback', {'redirect': app.request.uri})}) }}">
                 <span class="glyphicon glyphicon-user"></span>
                 {{ msg("login") }}
             </a>
@@ -249,7 +250,7 @@
                 &copy; {{ 'jan-2008'|date_format('Y') }}-{{ 'now'|date_format('Y') }}
                 &middot;
                 <a href="https://github.com/x-tools/xtools/releases/tag/{{ version }}" target="_blank" title="Current XTools version">v.{{ version }}</a>
-                (<a href="https://github.com/x-tools/xtools/tree/{{ hash() }}" target="_blank" title="Current code revision">r.{{ shortHash() }}</a>)
+                (<a href="https://github.com/x-tools/xtools/tree/{{ git_hash() }}" target="_blank" title="Current code revision">r.{{ git_hash_short() }}</a>)
                 &middot;
                 {{ layout.apiLink }}
                 &middot;
