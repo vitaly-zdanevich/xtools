@@ -31,6 +31,32 @@ class User extends Model
 
         // IPv6 address are stored as uppercase in the database.
         if ($this->isAnon()) {
+            // IPv6 Workaround for double colon syntax.
+            if(strpos($this->username, "::") >= 0) {
+
+                // Create array and fill it
+                $octets = array_fill(0, 8, "0");
+
+                // Deal with the provided data
+                $data = explode(":", $this->username);
+
+                // Store the left values, up until we run out of values.
+                for($i = 0; $i < 8; $i++) {
+                    if($data[$i] == "") {break;}
+                    $octets[$i] = $data[$i];
+                }
+
+                // Store the right values, up until we run out of values.
+                $data = array_reverse($data);
+                for($i = 0; $i < 8; $i++) {
+                    if($data[$i] == "") {break;}
+                    $octets[7 - $i] = $data[$i];
+                }
+
+                // Store the username, imploding the Octets.
+                $this->username = implode(":", $octets);
+            }
+
             $this->username = strtoupper($this->username);
         }
     }
