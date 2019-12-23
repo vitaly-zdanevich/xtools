@@ -10,6 +10,7 @@ namespace Tests\AppBundle\Helper;
 use AppBundle\Helper\AutomatedEditsHelper;
 use AppBundle\Model\Project;
 use AppBundle\Repository\ProjectRepository;
+use Symfony\Component\Cache\Adapter\TraceableAdapter;
 use Tests\AppBundle\TestAdapter;
 
 /**
@@ -23,6 +24,9 @@ class AutomatedEditsTest extends TestAdapter
 
     /** @var Project The project against which we are testing. */
     protected $project;
+
+    /** @var TraceableAdapter */
+    protected $cache;
 
     /**
      * Set up the AutomatedEditsHelper object for testing.
@@ -127,6 +131,16 @@ class AutomatedEditsTest extends TestAdapter
                 'dbName' => 'arwiki',
                 'lang' => 'ar',
             ]);
+        $projectRepo->expects($this->once())
+            ->method('getParameter')
+            ->with('multilingual_wikis')
+            ->willReturn([
+                'commonswiki',
+                'mediawikiwiki',
+                'metawiki',
+                'specieswiki',
+                'wikidatawiki',
+            ]);
         $project = new Project('ar.wikipedia.org');
         $project->setRepository($projectRepo);
 
@@ -170,6 +184,16 @@ class AutomatedEditsTest extends TestAdapter
                 'url' => 'https://en.wikipedia.org',
                 'dbName' => 'enwiki',
                 'lang' => 'en',
+            ]);
+        $projectRepo->expects($this->once())
+            ->method('getParameter')
+            ->with('multilingual_wikis')
+            ->willReturn([
+                'commonswiki',
+                'mediawikiwiki',
+                'metawiki',
+                'specieswiki',
+                'wikidatawiki',
             ]);
         $this->project = new Project('en.wikipedia.org');
         $this->project->setRepository($projectRepo);

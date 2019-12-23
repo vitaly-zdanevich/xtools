@@ -130,6 +130,20 @@ class ProjectTest extends TestAdapter
     }
 
     /**
+     * Whether the Project is multilingual, based on configuration.
+     */
+    public function testIsMultilingual(): void
+    {
+        $projectRepo = $this->getProjectRepo();
+        $projectRepo->method('getParameter')
+            ->with('multilingual_wikis')
+            ->willReturn(['test_wiki']);
+        $project = new Project('test_wiki');
+        $project->setRepository($projectRepo);
+        static::assertTrue($project->isMultiLingual());
+    }
+
+    /**
      * A user or a whole project can opt in to displaying restricted statistics.
      * @dataProvider optedInProvider
      * @param string[] $optedInProjects List of projects.

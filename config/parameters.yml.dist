@@ -64,8 +64,11 @@ parameters:
     app.wikiwho.username: ~
     app.wikiwho.password: ~
 
-    # Ignore for any non-WMF installation. This is only meant to convert legacy parameters.
-    languageless_wikis: []
+    # Ignore for any non-WMF installation. This is used by the AutoEdits tool.
+    multilingual_wikis: []
+    # Ignore for any non-WMF installation. Includes the root domain (e.g. 'mediawiki' for 'www.mediawiki.org')
+    # This is only mant to convert legacy URL parameters. Meta is intentionally not included.
+    www_domains: []
 
     # Enabling or disabling of individual tools
     enable.AdminScore: 1

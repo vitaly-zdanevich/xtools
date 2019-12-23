@@ -362,6 +362,17 @@ abstract class Repository
     }
 
     /**
+     * Shortcut to get a configuration parameter, so that parameters can
+     * be fetched from any model that has a repository attached to it.
+     * @param string $param
+     * @return mixed
+     */
+    public function getParameter(string $param)
+    {
+        return $this->container->getParameter($param);
+    }
+
+    /**
      * Special handling of some DriverExceptions, otherwise original Exception is thrown.
      * @param DriverException $e
      * @param int $timeout Timeout value, if applicable. This is passed to the i18n message.

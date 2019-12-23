@@ -85,7 +85,7 @@ class AutomatedEditsHelper extends HelperBase
             $localRules = [];
         }
 
-        $langRules = $tools[$project->getLang()] ?? [];
+        $langRules = $this->getLangRules($project, $tools);
 
         // Per-wiki rules have priority, followed by language-specific and global.
         $globalWithLangRules = $this->mergeRules($tools['global'], $langRules);
@@ -110,6 +110,24 @@ class AutomatedEditsHelper extends HelperBase
         uksort($this->tools[$projectDomain], 'strcasecmp');
 
         return $this->tools[$projectDomain];
+    }
+
+    /**
+     * Get rules belonging to all wikis with the language of the project.
+     * @param Project $project
+     * @param array $tools
+     * @return string[]
+     */
+    private function getLangRules(Project $project, array $tools): array
+    {
+        $langRules = $tools[$project->getLang()] ?? [];
+
+        if ($project->isMultiLingual()) {
+            $multilingualRules = $tools['multilingual'] ?? [];
+            $langRules = $this->mergeRules($multilingualRules, $langRules);
+        }
+
+        return $langRules;
     }
 
     /**

@@ -24,6 +24,9 @@ class Project extends Model
     /** @var PageAssessments Contains methods around the page assessments config for the Project. */
     protected $pageAssessments;
 
+    /** @var bool Whether there's no specific language associated with this wiki */
+    protected $isMultiLingual;
+
     /**
      * Whether the user being queried for in this session has opted in to restricted statistics.
      * @var bool
@@ -136,6 +139,21 @@ class Project extends Model
     public function getLang(): string
     {
         return $this->getBasicInfo()['lang'] ?? '';
+    }
+
+    /**
+     * Is this Project multilingual, according to our configuration?
+     * @return bool
+     */
+    public function isMultiLingual(): bool
+    {
+        if (isset($this->isMultiLingual)) {
+            return $this->isMultiLingual;
+        }
+        return in_array(
+            $this->getDatabaseName(),
+            $this->getRepository()->getParameter('multilingual_wikis')
+        );
     }
 
     /**

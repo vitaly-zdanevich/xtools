@@ -100,6 +100,7 @@ class DefaultController extends XtoolsController
      * @Route("/login", name="login")
      * @return RedirectResponse
      * @throws Exception If initialization fails.
+     * @codeCoverageIgnore
      */
     public function loginAction(): RedirectResponse
     {

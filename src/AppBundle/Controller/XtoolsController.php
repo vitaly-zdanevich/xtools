@@ -735,11 +735,11 @@ abstract class XtoolsController extends Controller
             // so we must remove leading periods and trailing .org's.
             $params['project'] = rtrim(ltrim($params['wiki'], '.'), '.org').'.org';
 
-            /** @var string[] $languagelessProjects Projects for which there is no specific language association. */
-            $languagelessProjects = $this->container->getParameter('languageless_wikis');
+            /** @var string[] $multilingualDomains Projects for which there is no specific language association. */
+            $multilingualDomains = $this->container->getParameter('www_domains');
 
             // Prepend language if applicable.
-            if (isset($params['lang']) && !in_array($params['wiki'], $languagelessProjects)) {
+            if (isset($params['lang']) && !in_array($params['wiki'], $multilingualDomains)) {
                 $params['project'] = $params['lang'].'.'.$params['project'];
             }
 

@@ -56,6 +56,16 @@ class EditTest extends TestAdapter
                     'articlePath' => '/wiki/$1',
                 ],
             ]);
+        $this->projectRepo->method('getParameter')
+            ->with('multilingual_wikis')
+            ->willReturn([
+                'commonswiki',
+                'mediawikiwiki',
+                'metawiki',
+                'specieswiki',
+                'wikidatawiki',
+            ]);
+
         $this->project->setRepository($this->projectRepo);
         $this->page = new Page($this->project, 'Test_page');
 

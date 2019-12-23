@@ -163,6 +163,12 @@ parameters:
             label: Redirecionamentos
             link: Ajuda:Guia de edição/Redirecionar páginas
 
+    # Multilingual wikis (targets all of the 'multilingual_wikis' as defined in parameters.yml)
+    multilingual:
+        Translation:
+            regex: 'using \[\[Special:PageMigration\|page migration\]\]|Marked this version for translation|Prepared the page for translation'
+            link: mw:Extension:Translate
+
     # Per-wiki lists
     ar.wikipedia.org:
         AutoWikiBrowser:
