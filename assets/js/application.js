@@ -38,6 +38,7 @@ $(function () {
         setupNavCollapsing();
 
         xtools.application.setupColumnSorting();
+        xtools.application.setupCopyLinks();
         setupTOC();
         setupStickyHeader();
         setupProjectListener();
@@ -454,22 +455,26 @@ function setupProjectListener()
  */
 function setupNamespaceSelector()
 {
+    var $projectInput = $('#project_input');
+    var $namespaceSelect = $('#namespace_select');
+
     // keep track of last valid project
     xtools.application.vars.lastProject = $('#project_input').val();
 
-    $('#project_input').off('change').on('change', function () {
+    $projectInput.off('change').on('change', function () {
         // Disable the namespace selector and show a spinner while the data loads.
         $('#namespace_select').prop('disabled', true);
         $(this).addClass('show-loader');
 
         var newProject = this.value;
+        var oldNsOption = $namespaceSelect.val() || 0;
 
         /** global: xtBaseUrl */
         $.get(xtBaseUrl + 'api/project/namespaces/' + newProject).done(function (data) {
             // Clone the 'all' option (even if there isn't one),
             // and replace the current option list with this.
             var $allOption = $('#namespace_select option[value="all"]').eq(0).clone();
-            $("#namespace_select").html($allOption);
+            $namespaceSelect.html($allOption);
 
             // Keep track of project API path for use in page title autocompletion.
             xtools.application.vars.apiPath = data.api;
@@ -486,21 +491,21 @@ function setupNamespaceSelector()
                 );
             }
             // Default to mainspace being selected.
-            $("#namespace_select").val(0);
+            $namespaceSelect.val(oldNsOption);
             xtools.application.vars.lastProject = newProject;
 
             // Re-init autocompletion
             setupAutocompletion();
         }).fail(revertToValidProject.bind(this, newProject)).always(function () {
             $('#namespace_select').prop('disabled', false);
-            $('#project_input').removeClass('show-loader');
+            $projectInput.removeClass('show-loader');
         });
     });
 
     // If they change the namespace, update autocompletion,
     // which will ensure only pages in the selected namespace
     // show up in the autocompletion
-    $('#namespace_select').on('change', setupAutocompletion);
+    $namespaceSelect.on('change', setupAutocompletion);
 }
 
 /**
@@ -564,9 +569,9 @@ function setupAutocompletion()
         $articleInput.typeahead({
             ajax: Object.assign(typeaheadOpts, {
                 preDispatch: function (query) {
-                    // If there is a namespace selector, make sure we search
-                    // only within that namespace
-                    if ($namespaceInput[0] && $namespaceInput.val() !== '0') {
+                    // If there is a namespace selector, make sure we search only within that namespace,
+                    // unless it has the 'data-no-search' attribute set.
+                    if ($namespaceInput[0] && $namespaceInput.val() !== '0' && !$namespaceInput.data('no-search')) {
                         var nsName = $namespaceInput.find('option:selected').text().trim();
                         query = nsName + ':' + query;
                     }
@@ -744,3 +749,15 @@ xtools.application.setupMultiSelectListeners = function () {
         $inputs.prop('checked', $(this).prop('checked'));
     });
 };
+
+xtools.application.setupCopyLinks = function () {
+    var $links = $('.copy-cell');
+    $links.on('click', function (e) {
+        var $link = $(e.target);
+        var $parent = $link.parents('.copy-cell-body');
+        var number = $parent.text().match(/\d+/)[0]
+        navigator.clipboard.writeText(number).then(clipText => {
+            $link.replaceWith('<span class="text-success">Copied</span>!');
+        });
+    });
+}

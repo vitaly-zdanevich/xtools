@@ -579,6 +579,7 @@ abstract class XtoolsController extends Controller
             'project',
             'username',
             'namespace',
+            'trans_namespace',
             'page',
             'categories',
             'group',

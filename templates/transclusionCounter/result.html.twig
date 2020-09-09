@@ -1,0 +1,67 @@
+{% extends 'base.html.twig' %}
+{% import 'macros/layout.html.twig' as layout %}
+{% import 'macros/wiki.html.twig' as wiki %}
+
+{% block body %}
+<div class="panel panel-primary">
+    <header class="panel-heading">
+        <div class="text-center xt-heading-top" >
+            <a class="back-to-search" href="{{ path('TransclusionCounter') }}">
+                <span class="glyphicon glyphicon-chevron-left"></span>
+                {{ msg('back') }}
+            </a>
+            {{ wiki.pageLink(page, page.title) }}
+            <small>
+                &bull;
+                {{ project.domain }}
+            </small>
+        </div>
+    </header>
+
+    <div class="panel-body xt-panel-body">
+        {{ wiki.pageLinks(page) }}
+        {% set content %}
+            <div class="col-lg-12 stat-list clearfix">
+                <table class="table">
+                    <tr>
+                        <td>{{ msg('page') }}</td>
+                        <td>{{ wiki.pageLink(page) }}</td>
+                    </tr>
+                    {% if tc.transNamespace != 'all' %}
+                        <tr>
+                            <td>{{ msg('transclusion-namespace') }}</td>
+                            <td>{{ project.namespaces[tc.transNamespace] }}</td>
+                        </tr>
+                    {% endif %}
+                    <tr>
+                        <td>{{ msg('protections') }}</td>
+                        <td>
+                            {% if tc.protectionTypes is not empty %}
+                                {{ tc.protectionTypes|join(' &middot; ')|raw }}
+                            {% else %}
+                                {% if tc.shouldBeProtected %}
+                                    <span class="text-danger">{{ msg('none') }}</span>
+                                    ({{ wiki.pageLinkRaw(page.title, project, msg('protect')|lower, 'action=protect' ~ '&mwProtect-reason=' ~ tc.count|num_format ~ ' ' ~ msg('num-transclusions', [tc.count])) }})
+                                {% else %}
+                                    {{ msg('none') }}
+                                {% endif %}
+                            {% endif %}
+                        </td>
+                    </tr>
+                    <tr>
+                        <td class="stat-list--new-group">{{ msg('transclusions', [tc.count]) }}</td>
+                        <td class="stat-list--new-group copy-cell-body">
+                            <strong>
+                                {% set nsArg = tc.transNamespace == 'all' ? '' : tc.transNamespace %}
+                                {{ wiki.pageLinkRaw('Special:WhatLinksHere/' ~ page.title, project, tc.count|num_format, 'hidelinks=1&hideredirs=1&namespace=' ~ nsArg) }}
+                            </strong>
+                            <span class="text-muted"><a href="javascript:" class="copy-cell text-muted">({{ msg('copy')|lower }})</a></span>
+                        </td>
+                    </tr>
+                </table>
+            </div>
+        {% endset %}
+        {{ layout.content_block('tool-transclusioncounter', content) }}
+    </div>
+</div>
+{% endblock %}

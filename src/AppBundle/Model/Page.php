@@ -72,7 +72,7 @@ class Page extends Model
      */
     public function getCacheKey(): string
     {
-        return md5((string)$this->getId());
+        return md5($this->getProject()->getCacheKey() . (string)$this->getId());
     }
 
     /**
@@ -189,6 +189,26 @@ class Page extends Model
     {
         $info = $this->getPageInfo();
         return isset($info['watchers']) ? (int)$info['watchers'] : null;
+    }
+
+    /**
+     * Get the protections for the page.
+     * @return array
+     */
+    public function getProtections(): array
+    {
+        $info = $this->getPageInfo();
+        return $info['protection'] ?? [];
+    }
+
+    /**
+     * Get the restriction types for the page.
+     * @return string[]
+     */
+    public function getRestrictionTypes(): array
+    {
+        $info = $this->getPageInfo();
+        return $info['restrictiontypes'] ?? [];
     }
 
     /**

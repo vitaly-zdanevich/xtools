@@ -61,6 +61,24 @@ Get links statistics of `Albert Einstein <https://en.wikipedia.org/wiki/Albert_E
 
     https://xtools.wmflabs.org/api/page/links/en.wikipedia.org/Albert_Einstein
 
+Transclusion Counter
+====================
+``GET /api/page/transclusion_count/{project}/{page}/{trans_namespace}``
+
+Get the number of pages that transclude the given page (templates mostly, but any page will work).
+
+**Parameters**
+
+* ``project`` (**required**) - Project domain or database name.
+* ``page`` (**required**) - Full page title.
+* ``trans_namespace`` - Optionally show counts of transclusion that are in a given namespace.
+
+**Example**
+
+Get the number of transclusions for Template:Yesno across the whole wiki.
+
+    `<https://xtools.wmflabs.org/api/page/transclusion_count/en.wikipedia/Albert_Einstein>`_
+
 Top editors
 ===========
 ``GET /api/page/top_editors/{project}/{article}/{start}/{end}/{limit}``
